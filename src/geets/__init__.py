@@ -16,6 +16,12 @@ from .utils.gee            import (
     initialize_ee,
 )
 from .utils.output         import l_get_outdir, l_set_outdir
+from .utils.exports        import (
+    l_download_image,
+    l_download_imagecollection,
+    export_image_to_drive,
+    export_imagecollection_to_drive,
+)
 from .utils.image_utils    import get_image_with_least_cc
 from .pairs                import find_pairs, export_pairs, ImagePair
 
@@ -54,4 +60,8 @@ __all__ = [
     "l_set_outdir",
     "l_get_outdir",
     "get_image_with_least_cc",
+    "l_download_image",
+    "l_download_imagecollection",
+    "export_image_to_drive",
+    "export_imagecollection_to_drive",
 ]
