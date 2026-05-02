@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 from typing import Literal
 
 import ee
@@ -15,9 +16,7 @@ DEM_COLLECTIONS: dict[str, str] = {
     "NASADEM": "NASA/NASADEM_HGT/001",
 }
 
-_VALID_PRODUCTS: frozenset[str] = frozenset(
-    {"elevation", "slope", "aspect", "hillshade"}
-)
+_VALID_PRODUCTS: frozenset[str] = frozenset(typing.get_args(DemProduct))
 
 
 def _load_dem(
