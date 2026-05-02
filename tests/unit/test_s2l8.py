@@ -52,3 +52,12 @@ def test_to_surface_reflection_dispatches_l8():
     with patch.object(s2l8, "_scale_l8", return_value=MagicMock()) as mock_scale:
         s2l8.to_surface_reflection(img, "L8")
         mock_scale.assert_called_once_with(img)
+
+
+def test_get_s2_raises_on_invalid_band():
+    from unittest.mock import MagicMock
+    from geets.optical.s2l8 import get_s2
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown band"):
+        get_s2("2022-01-01", "2022-03-01", MagicMock(), bands=["INVALID_BAND"])
