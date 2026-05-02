@@ -77,3 +77,24 @@ def _rename_s2(img: ee.Image) -> ee.Image:
 def _rename_l8(img: ee.Image) -> ee.Image:
     """Rename scaled L8 bands to harmonized names."""
     return img.rename(_BANDS_HARMONIZED)
+
+
+# ── Level 2: public per-image transform ───────────────────────────────────
+
+def to_surface_reflection(img: ee.Image, sensor: str) -> ee.Image:
+    """Scale a single image to physical surface reflectance [0, 1].
+
+    Parameters
+    ----------
+    img    : ee.Image with original DN bands for the given sensor.
+    sensor : "S2" scales by ÷ 10 000; "L8" scales by × 0.0000275 − 0.2.
+
+    Raises
+    ------
+    ValueError for unknown sensor strings.
+    """
+    if sensor == "S2":
+        return _scale_s2(img)
+    if sensor == "L8":
+        return _scale_l8(img)
+    raise ValueError(f"Unknown sensor '{sensor}'. Choose 'S2' or 'L8'.")
