@@ -61,3 +61,12 @@ def test_get_s2_raises_on_invalid_band():
 
     with pytest.raises(ValueError, match="Unknown band"):
         get_s2("2022-01-01", "2022-03-01", MagicMock(), bands=["INVALID_BAND"])
+
+
+def test_get_l8_raises_on_invalid_band():
+    from unittest.mock import MagicMock
+    from geets.optical.s2l8 import get_l8
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown band"):
+        get_l8("2022-01-01", "2022-03-01", MagicMock(), bands=["INVALID_BAND"])
