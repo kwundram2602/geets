@@ -183,3 +183,59 @@ def test_load_dem_no_clip_when_clip_false():
             "USGS/SRTMGL1_003", "elevation", False, aoi, False, ["elevation"]
         )
         mock_img.clip.assert_not_called()
+
+
+def test_load_copernicus_dem_delegates_correctly():
+    from unittest.mock import MagicMock, patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        aoi = MagicMock()
+        dem.load_copernicus_dem(aoi, products=["elevation", "slope"], clip=False)
+        mock_load.assert_called_once_with(
+            "COPERNICUS/DEM/GLO30", "DEM", True, aoi, False, ["elevation", "slope"]
+        )
+
+
+def test_load_copernicus_dem_defaults():
+    from unittest.mock import patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        dem.load_copernicus_dem()
+        mock_load.assert_called_once_with(
+            "COPERNICUS/DEM/GLO30", "DEM", True, None, True, ["elevation"]
+        )
+
+
+def test_load_srtm_delegates_correctly():
+    from unittest.mock import patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        dem.load_srtm()
+        mock_load.assert_called_once_with(
+            "USGS/SRTMGL1_003", "elevation", False, None, True, ["elevation"]
+        )
+
+
+def test_load_aster_delegates_correctly():
+    from unittest.mock import patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        dem.load_aster()
+        mock_load.assert_called_once_with(
+            "NASA/ASTER_GED/AG100_003", "elevation", False, None, True, ["elevation"]
+        )
+
+
+def test_load_nasadem_delegates_correctly():
+    from unittest.mock import patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        dem.load_nasadem()
+        mock_load.assert_called_once_with(
+            "NASA/NASADEM_HGT/001", "elevation", False, None, True, ["elevation"]
+        )
