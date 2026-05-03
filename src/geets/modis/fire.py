@@ -57,7 +57,7 @@ def load_modis_fire(
 
     n = col.size().getInfo()
     if n == 0:
-        print(f"[geets.modis.fire] WARNING: collection is EMPTY.")
+        print("[geets.modis.fire] WARNING: collection is EMPTY.")
     else:
         print(f"[geets.modis.fire] Collection ready: {n} images")
 

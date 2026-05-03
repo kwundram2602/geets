@@ -101,7 +101,7 @@ def load_modis_lst(
 
     n = col.size().getInfo()
     if n == 0:
-        print(f"[geets.modis.lst] WARNING: collection is EMPTY.")
+        print("[geets.modis.lst] WARNING: collection is EMPTY.")
     else:
         print(f"[geets.modis.lst] Collection ready: {n} images")
 

@@ -61,7 +61,10 @@ MODIS_SETS: dict[str, dict] = {
     "MOD11A2": {
         "id": "MODIS/061/MOD11A2",
         "product": "lst",
-        "description": "Terra Land Surface Temperature and Emissivity, 1 km, 8-day composite",
+        "description": (
+            "Terra Land Surface Temperature and Emissivity, 1 km, 8-day"
+            " composite"
+        ),
         "start": "2000-03-05",
         "end": "present",
         "resolution_m": 1000,
@@ -79,7 +82,10 @@ MODIS_SETS: dict[str, dict] = {
     "MYD11A2": {
         "id": "MODIS/061/MYD11A2",
         "product": "lst",
-        "description": "Aqua Land Surface Temperature and Emissivity, 1 km, 8-day composite",
+        "description": (
+            "Aqua Land Surface Temperature and Emissivity, 1 km, 8-day"
+            " composite"
+        ),
         "start": "2002-07-04",
         "end": "present",
         "resolution_m": 1000,

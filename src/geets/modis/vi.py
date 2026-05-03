@@ -18,10 +18,30 @@ _VI_COLLECTIONS: dict[str, dict] = {
 }
 
 _VI_META: dict[str, dict] = {
-    "MOD13Q1": {"ndvi": "NDVI", "evi": "EVI", "qa": "SummaryQA", "scale_factor": 0.0001},
-    "MOD13A1": {"ndvi": "NDVI", "evi": "EVI", "qa": "SummaryQA", "scale_factor": 0.0001},
-    "MOD13A3": {"ndvi": "NDVI", "evi": "EVI", "qa": "SummaryQA", "scale_factor": 0.0001},
-    "MYD13Q1": {"ndvi": "NDVI", "evi": "EVI", "qa": "SummaryQA", "scale_factor": 0.0001},
+    "MOD13Q1": {
+        "ndvi": "NDVI",
+        "evi": "EVI",
+        "qa": "SummaryQA",
+        "scale_factor": 0.0001,
+    },
+    "MOD13A1": {
+        "ndvi": "NDVI",
+        "evi": "EVI",
+        "qa": "SummaryQA",
+        "scale_factor": 0.0001,
+    },
+    "MOD13A3": {
+        "ndvi": "NDVI",
+        "evi": "EVI",
+        "qa": "SummaryQA",
+        "scale_factor": 0.0001,
+    },
+    "MYD13Q1": {
+        "ndvi": "NDVI",
+        "evi": "EVI",
+        "qa": "SummaryQA",
+        "scale_factor": 0.0001,
+    },
 }
 
 # SummaryQA: 0=good, 1=marginal, 2=snow/ice, 3=cloudy
@@ -99,7 +119,7 @@ def load_modis_vi(
 
     n = col.size().getInfo()
     if n == 0:
-        print(f"[geets.modis.vi] WARNING: collection is EMPTY.")
+        print("[geets.modis.vi] WARNING: collection is EMPTY.")
     else:
         print(f"[geets.modis.vi] Collection ready: {n} images")
 
