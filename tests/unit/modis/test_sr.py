@@ -65,7 +65,8 @@ def test_load_modis_sr_applies_scale():
 
     with patch.object(sr.ee, "ImageCollection", return_value=mock_col):
         sr.load_modis_sr("2023-01-01", "2024-01-01", mask_clouds=False, apply_scale=True)
-        assert mock_col.map.called
+        # Only the scale map should fire (mask_clouds=False skips QA map).
+        assert mock_col.map.call_count == 1
 
 
 def test_load_modis_sr_accepts_band_subset():
