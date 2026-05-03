@@ -45,3 +45,12 @@ def test_modis_sets_resolution_m_is_int():
     from geets.modis import sets
     for key, entry in sets.MODIS_SETS.items():
         assert isinstance(entry["resolution_m"], int), f"{key} resolution_m must be int"
+
+
+def test_modis_sets_ids_use_06x_namespace():
+    import re
+    from geets.modis import sets
+    for key, entry in sets.MODIS_SETS.items():
+        assert re.match(r"MODIS/06\d/", entry["id"]), (
+            f"{key} id should be in MODIS/06x/ namespace, got: {entry['id']}"
+        )
