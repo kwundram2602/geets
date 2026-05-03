@@ -17,7 +17,7 @@ from .modis import (
     load_modis_sr,
     load_modis_vi,
 )
-from .optical.s2l8 import get_l8, get_s2, to_surface_reflection
+from .optical import get_l8, get_s2, to_surface_reflection
 from .pairs import ImagePair, export_pairs, find_pairs
 from .terrain.dem import (
     DEM_COLLECTIONS,
