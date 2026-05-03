@@ -43,24 +43,19 @@ def get_l8(
     ----------
     start_date, end_date : ISO date strings "YYYY-MM-DD" (half-open [a, b))
     aoi                  : optional AOI for bounds filtering and clipping
-    bands                : subset of harmonized names, e.g. ["Red", "NIR"].
-                           None keeps all six: Blue Green Red NIR SWIR1 SWIR2
+    bands                : band names to keep after scaling. Harmonized names
+                           (Blue Green Red NIR SWIR1 SWIR2) trigger renaming;
+                           any other name keeps the original sensor band name.
+                           None keeps all six harmonized bands.
     max_cloud_cover      : maximum CLOUD_COVER (default 20)
     mask_clouds          : apply QA_PIXEL cloud/shadow mask (default True)
     clip                 : clip each image to AOI when aoi is provided (default True)
 
     Returns
     -------
-    ee.ImageCollection with harmonized bands scaled to [0, 1]
+    ee.ImageCollection with scaled bands; renamed to harmonized names unless
+    non-harmonized band names are requested.
     """
-    if bands is not None:
-        unknown = [b for b in bands if b not in _BANDS_HARMONIZED]
-        if unknown:
-            raise ValueError(
-                f"Unknown band(s) {unknown}. "
-                f"Choose from harmonized names: {_BANDS_HARMONIZED}"
-            )
-
     print(f"[geets.landsat] Loading L8: {_L8_COLLECTION_ID}")
     print(f"[geets.landsat] Date range: {start_date} → {end_date}")
     print(f"[geets.landsat] max_cloud_cover={max_cloud_cover}%  "
@@ -79,7 +74,10 @@ def get_l8(
     if mask_clouds:
         col = col.map(_mask_l8_qa_pixel)
 
-    col = col.map(_scale_l8).map(_rename_l8)
+    use_harmonized = bands is None or all(b in _BANDS_HARMONIZED for b in bands)
+    col = col.map(_scale_l8)
+    if use_harmonized:
+        col = col.map(_rename_l8)
 
     if bands is not None:
         col = col.select(bands)

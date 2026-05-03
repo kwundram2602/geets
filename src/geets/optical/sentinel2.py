@@ -43,24 +43,19 @@ def get_s2(
     ----------
     start_date, end_date : ISO date strings "YYYY-MM-DD" (half-open [a, b))
     aoi                  : optional AOI for bounds filtering and clipping
-    bands                : subset of harmonized names, e.g. ["Red", "NIR"].
-                           None keeps all six: Blue Green Red NIR SWIR1 SWIR2
+    bands                : band names to keep after scaling. Harmonized names
+                           (Blue Green Red NIR SWIR1 SWIR2) trigger renaming;
+                           any other name keeps the original sensor band name.
+                           None keeps all six harmonized bands.
     max_cloud_cover      : maximum CLOUDY_PIXEL_PERCENTAGE (default 20)
     mask_clouds          : apply QA60 cloud/cirrus mask (default True)
     clip                 : clip each image to AOI when aoi is provided (default True)
 
     Returns
     -------
-    ee.ImageCollection with harmonized bands scaled to [0, 1]
+    ee.ImageCollection with scaled bands; renamed to harmonized names unless
+    non-harmonized band names are requested.
     """
-    if bands is not None:
-        unknown = [b for b in bands if b not in _BANDS_HARMONIZED]
-        if unknown:
-            raise ValueError(
-                f"Unknown band(s) {unknown}. "
-                f"Choose from harmonized names: {_BANDS_HARMONIZED}"
-            )
-
     print(f"[geets.sentinel2] Loading S2: {_S2_COLLECTION_ID}")
     print(f"[geets.sentinel2] Date range: {start_date} → {end_date}")
     print(f"[geets.sentinel2] max_cloud_cover={max_cloud_cover}%  "
@@ -79,7 +74,10 @@ def get_s2(
     if mask_clouds:
         col = col.map(_mask_s2_qa60)
 
-    col = col.map(_scale_s2).map(_rename_s2)
+    use_harmonized = bands is None or all(b in _BANDS_HARMONIZED for b in bands)
+    col = col.map(_scale_s2)
+    if use_harmonized:
+        col = col.map(_rename_s2)
 
     if bands is not None:
         col = col.select(bands)

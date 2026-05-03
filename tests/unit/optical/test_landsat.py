@@ -8,16 +8,6 @@ def test_l8_cloud_property():
     assert _L8_CLOUD_PROPERTY == "CLOUD_COVER"
 
 
-def test_get_l8_raises_on_invalid_band():
-    from unittest.mock import MagicMock
-
-    import pytest
-
-    from geets.optical.landsat import get_l8
-
-    with pytest.raises(ValueError, match="Unknown band"):
-        get_l8("2022-01-01", "2022-03-01", MagicMock(), bands=["INVALID_BAND"])
-
 
 def test_get_l8_importable_from_optical():
     from geets.optical import get_l8
