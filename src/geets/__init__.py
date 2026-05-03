@@ -9,7 +9,14 @@ from .climate.chirps import (
     load_chirps_daily,
 )
 from .climate.era5 import ERA5_COLLECTIONS, load_era5_daily
-from .modis import MODIS_SETS, load_modis_ndvi, load_modis_vi
+from .modis import (
+    MODIS_SETS,
+    load_modis_fire,
+    load_modis_lst,
+    load_modis_ndvi,
+    load_modis_sr,
+    load_modis_vi,
+)
 from .optical.s2l8 import get_l8, get_s2, to_surface_reflection
 from .pairs import ImagePair, export_pairs, find_pairs
 from .terrain.dem import (
@@ -59,6 +66,9 @@ __all__ = [
     "ImagePair",
     "load_modis_vi",
     "load_modis_ndvi",
+    "load_modis_lst",
+    "load_modis_sr",
+    "load_modis_fire",
     "MODIS_SETS",
     "get_s2",
     "get_l8",
