@@ -90,7 +90,7 @@ def get_s2(
 
     n = col.size().getInfo()
     if n == 0:
-        print(f"[geets.sentinel2] WARNING: S2 collection is EMPTY (0 images).")
+        print("[geets.sentinel2] WARNING: S2 collection is EMPTY (0 images).")
         print(f"[geets.sentinel2]   → Check date range ({start_date} – {end_date}),")
         print(f"[geets.sentinel2]      max_cloud_cover={max_cloud_cover}%, and AOI.")
     else:
