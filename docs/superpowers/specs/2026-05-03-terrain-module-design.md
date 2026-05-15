@@ -13,7 +13,7 @@ Add a `terrain/` subpackage to `geets` that loads static DEM/DSM images from fou
 |---|---|---|---|
 | `load_copernicus_dem` | `COPERNICUS/DEM/GLO30` | `"DEM"` | 30 m |
 | `load_srtm` | `USGS/SRTMGL1_003` | `"elevation"` | 30 m |
-| `load_aster` | `NASA/ASTER_GED/AG100_003` | `"b1"` | 30 m |
+| `load_aster` | `NASA/ASTER_GED/AG100_003` | `"elevation"` | 30 m |
 | `load_nasadem` | `NASA/NASADEM_HGT/001` | `"elevation"` | 30 m |
 
 ## File Layout

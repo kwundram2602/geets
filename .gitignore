@@ -1,0 +1,11 @@
+dist/
+build/
+*.egg-info/
+.venv
+uv.lock
+tests/
+scripts/
+.vscode
+.claude/
+notes/
+**/**/__pycache__/

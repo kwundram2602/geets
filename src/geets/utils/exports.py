@@ -6,18 +6,45 @@ import ee
 import geemap
 
 
+def _normalize_region(
+    region: ee.Geometry | ee.FeatureCollection | None,
+) -> ee.Geometry | None:
+    """Resolve a region to a plain Geometry GEE can export against.
+
+    FeatureCollections and computed geometries fail at export time with
+    "Setting the CRS on a computed Geometry is not supported" unless
+    .transform() is called first to materialize the projection.
+    """
+    if region is None:
+        return None
+    if isinstance(region, ee.FeatureCollection):
+        region = region.geometry()
+    return region.transform("EPSG:4326", maxError=1)
+
+
 def l_download_image(
     image: ee.Image,
     outdir: str | Path,
     filename: str,
     *,
-    region: ee.Geometry | None = None,
+    region: ee.Geometry | ee.FeatureCollection | None = None,
     scale: float = 30.0,
     crs: str = "EPSG:4326",
 ) -> Path:
     """Download a single GEE image to local disk as GeoTIFF.
 
     Limited to ~32 MB per file. For larger areas use export_image_to_drive.
+
+    Args:
+        image: GEE image to download.
+        outdir: Local directory to write the file into (created if missing).
+        filename: Output file stem; `.tif` is appended automatically.
+        region: Export region geometry. If None, uses the image's footprint.
+        scale: Pixel size in metres.
+        crs: Coordinate reference system of the output GeoTIFF.
+
+    Returns:
+        Path to the written GeoTIFF file.
     """
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
@@ -26,7 +53,7 @@ def l_download_image(
         image,
         filename=str(path),
         scale=scale,
-        region=region,
+        region=_normalize_region(region),
         crs=crs,
         file_per_band=False,
     )
@@ -38,7 +65,7 @@ def l_download_imagecollection(
     outdir: str | Path,
     prefix: str,
     *,
-    region: ee.Geometry | None = None,
+    region: ee.Geometry | ee.FeatureCollection | None = None,
     scale: float = 30.0,
     crs: str = "EPSG:4326",
 ) -> list[Path]:
@@ -68,7 +95,7 @@ def export_image_to_drive(
     folder: str,
     file_name_prefix: str,
     *,
-    region: ee.Geometry | None = None,
+    region: ee.Geometry | ee.FeatureCollection | None = None,
     scale: float = 30.0,
     crs: str = "EPSG:4326",
     max_pixels: int = int(1e13),
@@ -83,7 +110,7 @@ def export_image_to_drive(
         description=description,
         folder=folder,
         fileNamePrefix=file_name_prefix,
-        region=region,
+        region=_normalize_region(region),
         scale=scale,
         crs=crs,
         maxPixels=max_pixels,
@@ -99,7 +126,7 @@ def export_imagecollection_to_drive(
     folder: str,
     file_name_prefix: str,
     *,
-    region: ee.Geometry | None = None,
+    region: ee.Geometry | ee.FeatureCollection | None = None,
     scale: float = 30.0,
     crs: str = "EPSG:4326",
     max_pixels: int = int(1e13),

@@ -37,4 +37,5 @@ dev = ["ruff", "ty", "pytest"]
 testpaths = ["tests"]
 
 [project.scripts]
-install-local = "scripts.install_local:main"
+install-local = "geets.tools.install_local:main"
+ship = "geets.tools.ship:main"

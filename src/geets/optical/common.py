@@ -9,6 +9,7 @@ _S2_BANDS_SRC = ["B2",    "B3",    "B4",    "B8",    "B11",   "B12"  ]
 _S2_SCALE     = 1e-4
 
 _L8_BANDS_SRC = ["SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6", "SR_B7"]
+_L8_BANDS_ALL = _L8_BANDS_SRC + ["QA_PIXEL", "ST_B10"]
 _L8_SCALE     = 2.75e-5
 _L8_OFFSET    = -0.2
 

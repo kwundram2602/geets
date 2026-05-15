@@ -23,7 +23,7 @@ Deleted: `src/geets/optical/modis.py`
 
 ## MODIS_SETS (`sets.py`)
 
-A single `MODIS_SETS: dict[str, dict]` keyed by the GEE short name. Covers all official MODIS collections under the `MODIS/061/` or `MODIS/062/` namespace — no third-party alternatives (e.g. JRC GlobFire is excluded). Where both 061 and 062 exist for the same product, both are included; 062 is the preferred default.
+A single `MODIS_SETS: dict[str, dict]` keyed by the GEE short name. Covers all official MODIS collections under any `MODIS/06x/` namespace (061, 062, 063, or any future version) — no third-party alternatives (e.g. JRC GlobFire is excluded). Where multiple Collection versions exist for the same product, all are included; the highest-numbered version is the preferred default used by loaders.
 
 Each entry shape:
 
@@ -43,7 +43,7 @@ Band names, scale factors, and QA band identifiers are **not** stored in `MODIS_
 
 ### Collections included
 
-The table below lists the 061 baseline. During implementation, check GEE for each product whether a `MODIS/062/` equivalent exists; if it does, add a second entry with key suffix `_062` (e.g. `"MOD13Q1_062"`) and mark it as the preferred default in the loader.
+The table below lists the 061 baseline. During implementation, check GEE for each product whether a newer Collection version exists (062, 063, …); if so, add an entry for each version found (e.g. `"MOD13Q1"` for 061, `"MOD13Q1.062"` for 062). Loaders default to the highest-numbered version available.
 
 | Key | GEE ID | Family | Resolution | Cadence |
 |-----|--------|--------|-----------|---------|
