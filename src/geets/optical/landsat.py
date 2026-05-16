@@ -309,3 +309,58 @@ def get_l9(
         clip=clip,
         sensor_label="L9",
     )
+
+
+def get_l8l9(
+    start_date: str,
+    end_date: str,
+    aoi: ee.Geometry | None = None,
+    *,
+    bands: list[str] | None = None,
+    scale: bool = False,
+    max_cloud_cover: float = 20.0,
+    mask_clouds: bool = False,
+    clip: bool = False,
+) -> ee.ImageCollection:
+    """Load a merged Landsat-8 + Landsat-9 C2L2 SR collection.
+
+    Both sensors share identical band names, scale constants, and QA_PIXEL
+    structure. The merged collection retains each image's SPACECRAFT_ID
+    property ("LANDSAT_8" or "LANDSAT_9") for downstream filtering.
+
+    Landsat 9 data is only available from ~2022-02-01. Requests with
+    end_date before that date will return only L8 images.
+
+    Parameters
+    ----------
+    start_date, end_date : ISO date strings "YYYY-MM-DD" (half-open [a, b))
+    aoi                  : optional AOI for bounds filtering and clipping
+    bands                : band names to keep after processing. Harmonized names
+                           (Blue Green Red NIR SWIR1 SWIR2) trigger renaming;
+                           any other name keeps the original sensor band name.
+                           Do not mix harmonized and native SR band names.
+                           None keeps all bands in the source collection.
+    scale                : scale SR_B* to reflectance and ST_B* to Kelvin
+    max_cloud_cover      : maximum CLOUD_COVER (default 20)
+    mask_clouds          : apply QA_PIXEL cloud/shadow mask (default False)
+    clip                 : clip each image to AOI when aoi is provided
+
+    Returns
+    -------
+    ee.ImageCollection sorted by acquisition date, containing images from
+    both satellites within the requested window.
+    """
+    shared = dict(
+        bands=bands,
+        scale=scale,
+        max_cloud_cover=max_cloud_cover,
+        mask_clouds=mask_clouds,
+        clip=clip,
+    )
+    col_l8 = _load_lc_collection(
+        _L8_COLLECTION_ID, start_date, end_date, aoi, sensor_label="L8", **shared
+    )
+    col_l9 = _load_lc_collection(
+        _L9_COLLECTION_ID, start_date, end_date, aoi, sensor_label="L9", **shared
+    )
+    return col_l8.merge(col_l9).sort("system:time_start")
