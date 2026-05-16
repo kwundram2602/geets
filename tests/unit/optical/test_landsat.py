@@ -28,3 +28,18 @@ def test_lc_helpers_importable():
 def test_get_l8_importable_from_optical():
     from geets.optical import get_l8
     assert callable(get_l8)
+
+
+def test_l9_collection_id():
+    from geets.optical.landsat import _L9_COLLECTION_ID
+    assert _L9_COLLECTION_ID == "LANDSAT/LC09/C02/T1_L2"
+
+
+def test_get_l9_importable_from_optical():
+    from geets.optical import get_l9
+    assert callable(get_l9)
+
+
+def test_get_l8l9_importable_from_optical():
+    from geets.optical import get_l8l9
+    assert callable(get_l8l9)

@@ -22,6 +22,7 @@ _VALID_PRODUCTS: frozenset[str] = frozenset(typing.get_args(DemProduct))
 def _load_dem(
     collection_id: str,
     elev_band: str,
+    is_collection: bool,
     is_tiled: bool,
     aoi: ee.Geometry | None,
     clip: bool,
@@ -37,11 +38,14 @@ def _load_dem(
     print(f"[geets.terrain] Loading DEM: {collection_id}")
     print(f"[geets.terrain] products={products}")
 
-    col = ee.ImageCollection(collection_id)
-    if aoi is not None:
-        col = col.filterBounds(aoi)
+    if is_collection:
+        col = ee.ImageCollection(collection_id)
+        if aoi is not None:
+            col = col.filterBounds(aoi)
+        img = col.mosaic() if is_tiled else col.first()
+    else:
+        img = ee.Image(collection_id)
 
-    img = col.mosaic() if is_tiled else col.first()
     img = img.select(elev_band).rename("elevation")
 
     if any(p != "elevation" for p in products):
@@ -73,7 +77,7 @@ def load_copernicus_dem(
         ee.Image with requested bands.
     """
     return _load_dem(
-        DEM_COLLECTIONS["GLO30"], "DEM", True, aoi, clip, products or ["elevation"]
+        DEM_COLLECTIONS["GLO30"], "DEM", True, True, aoi, clip, products or ["elevation"]
     )
 
 
@@ -95,7 +99,7 @@ def load_srtm(
         ee.Image with requested bands.
     """
     return _load_dem(
-        DEM_COLLECTIONS["SRTM"], "elevation", False, aoi, clip,
+        DEM_COLLECTIONS["SRTM"], "elevation", False, False, aoi, clip,
         products or ["elevation"],
     )
 
@@ -118,7 +122,7 @@ def load_aster(
         ee.Image with requested bands.
     """
     return _load_dem(
-        DEM_COLLECTIONS["ASTER"], "elevation", False, aoi, clip,
+        DEM_COLLECTIONS["ASTER"], "elevation", False, False, aoi, clip,
         products or ["elevation"],
     )
 
@@ -141,6 +145,6 @@ def load_nasadem(
         ee.Image with requested bands.
     """
     return _load_dem(
-        DEM_COLLECTIONS["NASADEM"], "elevation", False, aoi, clip,
+        DEM_COLLECTIONS["NASADEM"], "elevation", False, False, aoi, clip,
         products or ["elevation"],
     )

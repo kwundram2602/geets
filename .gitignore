@@ -9,3 +9,4 @@ scripts/
 .claude/
 notes/
 **/**/__pycache__/
+docs

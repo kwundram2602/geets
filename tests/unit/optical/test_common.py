@@ -44,3 +44,17 @@ def test_to_surface_reflection_l8_selects_l8_bands():
     img = MagicMock()
     to_surface_reflection(img, "L8")
     img.select.assert_called_once_with(_L8_BANDS_SRC)
+
+
+def test_to_surface_reflection_l9_uses_l8_scale():
+    from unittest.mock import MagicMock
+    from geets.optical.common import to_surface_reflection
+
+    img = MagicMock()
+    img.select.return_value = img
+    img.multiply.return_value = img
+    img.add.return_value = img
+    img.copyProperties.return_value = img
+
+    result = to_surface_reflection(img, "L9")
+    assert result is not None
