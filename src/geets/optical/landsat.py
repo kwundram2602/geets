@@ -6,6 +6,7 @@ import ee
 from .common import _BANDS_HARMONIZED, _L8_BANDS_SRC, _L8_OFFSET, _L8_SCALE
 
 _L8_COLLECTION_ID  = "LANDSAT/LC08/C02/T1_L2"
+_L9_COLLECTION_ID  = "LANDSAT/LC09/C02/T1_L2"
 _LC_CLOUD_PROPERTY = "CLOUD_COVER"
 _LC_THERMAL_SCALE  = 0.00341802
 _LC_THERMAL_OFFSET = 149.0
@@ -257,4 +258,54 @@ def get_l8(
         mask_clouds=mask_clouds,
         clip=clip,
         sensor_label="L8",
+    )
+
+
+def get_l9(
+    start_date: str,
+    end_date: str,
+    aoi: ee.Geometry | None = None,
+    *,
+    bands: list[str] | None = None,
+    scale: bool = False,
+    max_cloud_cover: float = 20.0,
+    mask_clouds: bool = False,
+    clip: bool = False,
+) -> ee.ImageCollection:
+    """Load a Landsat-9 C2L2 SR collection with optional scaling/harmonization.
+
+    Landsat 9 uses the same C2L2 format, band names, scale constants, and
+    QA_PIXEL structure as Landsat 8. Data is available from ~2022-02-01.
+
+    Parameters
+    ----------
+    start_date, end_date : ISO date strings "YYYY-MM-DD" (half-open [a, b))
+    aoi                  : optional AOI for bounds filtering and clipping
+    bands                : band names to keep after processing. Harmonized names
+                           (Blue Green Red NIR SWIR1 SWIR2) trigger renaming;
+                           any other name keeps the original sensor band name.
+                           Do not mix harmonized and native SR band names.
+                           None keeps all bands in the source collection.
+    scale                : scale SR_B* to reflectance and ST_B* to Kelvin
+                           (default False)
+    max_cloud_cover      : maximum CLOUD_COVER (default 20)
+    mask_clouds          : apply QA_PIXEL cloud/shadow mask (default False)
+    clip                 : clip each image to AOI when aoi is provided (default False)
+
+    Returns
+    -------
+    ee.ImageCollection with requested bands; scaling and harmonization are
+    applied only when requested.
+    """
+    return _load_lc_collection(
+        _L9_COLLECTION_ID,
+        start_date,
+        end_date,
+        aoi,
+        bands=bands,
+        scale=scale,
+        max_cloud_cover=max_cloud_cover,
+        mask_clouds=mask_clouds,
+        clip=clip,
+        sensor_label="L9",
     )
