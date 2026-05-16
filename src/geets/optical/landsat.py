@@ -173,7 +173,7 @@ def get_l8(
     col = (
         ee.ImageCollection(_L8_COLLECTION_ID)
         .filterDate(start_date, end_date)
-        .filter(ee.Filter.lte(_L8_CLOUD_PROPERTY, max_cloud_cover))
+        .filter(ee.Filter.lte(_LC_CLOUD_PROPERTY, max_cloud_cover))
     )
 
     if aoi is not None:
@@ -181,7 +181,7 @@ def get_l8(
         col = col.filterBounds(aoi)
 
     if mask_clouds:
-        col = col.map(_mask_l8_qa_pixel)
+        col = col.map(_mask_lc_qa_pixel)
 
     requested_harmonized: list[str] = []
     requested_native_sr: list[str] = []
@@ -192,9 +192,9 @@ def get_l8(
             raise ValueError("bands cannot mix harmonized and native SR band names")
 
     if scale:
-        col = col.map(_scale_l8)
+        col = col.map(_scale_lc_sr)
     if requested_harmonized:
-        col = col.map(_rename_l8)
+        col = col.map(_rename_lc_sr)
 
     if bands is not None:
         col = col.select(bands)
