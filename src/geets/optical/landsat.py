@@ -1,4 +1,4 @@
-"""Landsat-8 C2L2 SR optical loader for Google Earth Engine."""
+"""Landsat-8 and Landsat-9 C2L2 SR optical loader for Google Earth Engine."""
 from __future__ import annotations
 
 import ee
@@ -6,9 +6,9 @@ import ee
 from .common import _BANDS_HARMONIZED, _L8_BANDS_SRC, _L8_OFFSET, _L8_SCALE
 
 _L8_COLLECTION_ID  = "LANDSAT/LC08/C02/T1_L2"
-_L8_CLOUD_PROPERTY = "CLOUD_COVER"
-_L8_THERMAL_SCALE  = 0.00341802
-_L8_THERMAL_OFFSET = 149.0
+_LC_CLOUD_PROPERTY = "CLOUD_COVER"
+_LC_THERMAL_SCALE  = 0.00341802
+_LC_THERMAL_OFFSET = 149.0
 _EM_SLOPE          = 0.004
 _EM_INTERCEPT      = 0.986
 _LST_LAMBDA        = 0.00115   # thermal-band wavelength (µm)
@@ -16,32 +16,32 @@ _LST_C2            = 1.438     # radiation constant c₂ (mK)
 _KELVIN_OFFSET     = 273.15
 
 
-def _mask_l8_qa_pixel(img: ee.Image) -> ee.Image:
+def _mask_lc_qa_pixel(img: ee.Image) -> ee.Image:
     """Mask clouds (bit 3) and cloud shadow (bit 4) using QA_PIXEL."""
     qa = img.select("QA_PIXEL")
     mask = qa.bitwiseAnd(1 << 3).eq(0).And(qa.bitwiseAnd(1 << 4).eq(0))
     return img.updateMask(mask)
 
 
-def _scale_l8(img: ee.Image) -> ee.Image:
+def _scale_lc_sr(img: ee.Image) -> ee.Image:
     """Scale L8 C2L2 SR and ST_B* DNs while preserving other bands."""
     scaled = img.addBands(
         img.select("SR_B.*").multiply(_L8_SCALE).add(_L8_OFFSET),
         None,
         True,
     )
-    scaled = thermal_scaling_l8(scaled)
+    scaled = thermal_scaling_lc(scaled)
     return ee.Image(scaled.copyProperties(img, img.propertyNames()))
 
 
-def _rename_l8(img: ee.Image) -> ee.Image:
+def _rename_lc_sr(img: ee.Image) -> ee.Image:
     """Rename L8 SR_B2..SR_B7 bands to harmonized names."""
     sr = img.select(_L8_BANDS_SRC).rename(_BANDS_HARMONIZED)
     other = img.select(img.bandNames().removeAll(_L8_BANDS_SRC))
     return ee.Image(other.addBands(sr).copyProperties(img, img.propertyNames()))
 
 
-def _ndvi_l8(img: ee.Image) -> ee.Image:
+def _ndvi_lc(img: ee.Image) -> ee.Image:
     """NDVI from unscaled L8 SR bands (SR_B5 = NIR, SR_B4 = Red)."""
     scaled = img.select(["SR_B5", "SR_B4"]).multiply(_L8_SCALE).add(_L8_OFFSET)
     return scaled.normalizedDifference(["SR_B5", "SR_B4"]).rename("NDVI")
@@ -58,18 +58,18 @@ def _proportion_of_vegetation(
     return ndvi.subtract(ndvi_min).divide(safe_denom).pow(2).rename("PV")
 
 
-def _emissivity_l8(pv: ee.Image) -> ee.Image:
+def _emissivity_lc(pv: ee.Image) -> ee.Image:
     """EM = 0.004 × PV + 0.986 (soil/vegetation mixture model)."""
     return pv.multiply(_EM_SLOPE).add(_EM_INTERCEPT).rename("EM")
 
 
-def thermal_scaling_l8(img: ee.Image) -> ee.Image:
+def thermal_scaling_lc(img: ee.Image) -> ee.Image:
     """Scale L8 ST_B.* DNs to brightness temperature in Kelvin."""
-    thermal_bands = img.select("ST_B.*").multiply(_L8_THERMAL_SCALE).add(_L8_THERMAL_OFFSET)
+    thermal_bands = img.select("ST_B.*").multiply(_LC_THERMAL_SCALE).add(_LC_THERMAL_OFFSET)
     return img.addBands(thermal_bands, None, True)
 
 
-def land_surface_temperature_l8(
+def land_surface_temperature_lc(
     img: ee.Image,
     emissivity: ee.Image | float = 0.95,
 ) -> ee.Image:
@@ -77,7 +77,7 @@ def land_surface_temperature_l8(
 
     Parameters
     ----------
-    img        : image with ST_B10 already scaled to Kelvin (via thermal_scaling_l8)
+    img        : image with ST_B10 already scaled to Kelvin (via thermal_scaling_lc)
     emissivity : per-pixel ee.Image or a scalar float (default 0.95)
 
     Returns
@@ -92,7 +92,7 @@ def land_surface_temperature_l8(
     ).rename("LST")
 
 
-def add_lst_l8(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
+def add_lst_lc(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
     """Add a derived LST band (°C) to a raw Landsat 8 C2L2 image.
 
     Derives emissivity from an NDVI-based Proportion of Vegetation model
@@ -112,7 +112,7 @@ def add_lst_l8(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
     -------
     Input image with "LST" band appended (°C).
     """
-    ndvi = _ndvi_l8(img)
+    ndvi = _ndvi_lc(img)
 
     stats = ndvi.reduceRegion(
         reducer=ee.Reducer.minMax(),
@@ -125,10 +125,10 @@ def add_lst_l8(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
     ndvi_max = ee.Number(ee.Algorithms.If(stats.get("NDVI_max"), stats.get("NDVI_max"), 0.8))
 
     pv = _proportion_of_vegetation(ndvi, ndvi_min, ndvi_max)
-    em = _emissivity_l8(pv)
+    em = _emissivity_lc(pv)
 
-    img_scaled_thermal = thermal_scaling_l8(img)
-    lst = land_surface_temperature_l8(img_scaled_thermal, em)
+    img_scaled_thermal = thermal_scaling_lc(img)
+    lst = land_surface_temperature_lc(img_scaled_thermal, em)
     return ee.Image(img.addBands(lst).copyProperties(img, img.propertyNames()))
 
 
