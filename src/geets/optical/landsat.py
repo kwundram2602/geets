@@ -66,7 +66,9 @@ def _emissivity_lc(pv: ee.Image) -> ee.Image:
 
 def thermal_scaling_lc(img: ee.Image) -> ee.Image:
     """Scale L8 ST_B.* DNs to brightness temperature in Kelvin."""
-    thermal_bands = img.select("ST_B.*").multiply(_LC_THERMAL_SCALE).add(_LC_THERMAL_OFFSET)
+    thermal_bands = (
+        img.select("ST_B.*").multiply(_LC_THERMAL_SCALE).add(_LC_THERMAL_OFFSET)
+    )
     return img.addBands(thermal_bands, None, True)
 
 
@@ -86,10 +88,17 @@ def land_surface_temperature_lc(
     Single-band ee.Image named "LST" in degrees Celsius.
     """
     thermal = img.select("ST_B10")
-    em = emissivity if isinstance(emissivity, ee.Image) else ee.Image.constant(emissivity)
+    em = (
+        emissivity
+        if isinstance(emissivity, ee.Image)
+        else ee.Image.constant(emissivity)
+    )
     return thermal.expression(
         "(TB / (1 + (_lambda * (TB / _c2)) * log(em))) - _k",
-        {"TB": thermal, "em": em, "_lambda": _LST_LAMBDA, "_c2": _LST_C2, "_k": _KELVIN_OFFSET},
+        {
+            "TB": thermal, "em": em,
+            "_lambda": _LST_LAMBDA, "_c2": _LST_C2, "_k": _KELVIN_OFFSET,
+        },
     ).rename("LST")
 
 
@@ -122,8 +131,12 @@ def add_lst_lc(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
         maxPixels=1e9,
         bestEffort=True,
     )
-    ndvi_min = ee.Number(ee.Algorithms.If(stats.get("NDVI_min"), stats.get("NDVI_min"), 0.2))
-    ndvi_max = ee.Number(ee.Algorithms.If(stats.get("NDVI_max"), stats.get("NDVI_max"), 0.8))
+    ndvi_min = ee.Number(
+        ee.Algorithms.If(stats.get("NDVI_min"), stats.get("NDVI_min"), 0.2)
+    )
+    ndvi_max = ee.Number(
+        ee.Algorithms.If(stats.get("NDVI_max"), stats.get("NDVI_max"), 0.8)
+    )
 
     pv = _proportion_of_vegetation(ndvi, ndvi_min, ndvi_max)
     em = _emissivity_lc(pv)
@@ -205,7 +218,7 @@ def _load_lc_collection(
 
     n = col.size().getInfo()
     if n == 0:
-        print(f"[geets.landsat] WARNING: {sensor_label} collection is EMPTY (0 images).")
+        print(f"[geets.landsat] WARNING: {sensor_label} collection is EMPTY.")
         print(f"[geets.landsat]   → Check date range ({start_date} – {end_date}),")
         print(f"[geets.landsat]      max_cloud_cover={max_cloud_cover}%, and AOI.")
     else:
