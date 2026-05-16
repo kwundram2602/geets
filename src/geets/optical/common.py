@@ -20,7 +20,7 @@ def to_surface_reflection(img: ee.Image, sensor: str) -> ee.Image:
     Parameters
     ----------
     img    : ee.Image with original DN bands for the given sensor.
-    sensor : "S2" scales by ÷ 10 000; "L8" scales by × 0.0000275 − 0.2.
+    sensor : "S2" scales by ÷ 10 000; "L8"/"L9" scale by × 0.0000275 − 0.2.
 
     Raises
     ------
@@ -29,7 +29,7 @@ def to_surface_reflection(img: ee.Image, sensor: str) -> ee.Image:
     if sensor == "S2":
         scaled = img.select(_S2_BANDS_SRC).multiply(_S2_SCALE)
         return scaled.copyProperties(img, img.propertyNames())
-    if sensor == "L8":
+    if sensor in ("L8", "L9"):
         scaled = img.select(_L8_BANDS_SRC).multiply(_L8_SCALE).add(_L8_OFFSET)
         return scaled.copyProperties(img, img.propertyNames())
-    raise ValueError(f"Unknown sensor '{sensor}'. Choose 'S2' or 'L8'.")
+    raise ValueError(f"Unknown sensor '{sensor}'. Choose 'S2', 'L8', or 'L9'.")
