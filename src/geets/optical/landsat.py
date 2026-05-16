@@ -132,6 +132,87 @@ def add_lst_lc(img: ee.Image, aoi: ee.Geometry, *, scale: int = 30) -> ee.Image:
     return ee.Image(img.addBands(lst).copyProperties(img, img.propertyNames()))
 
 
+def _load_lc_collection(
+    collection_id: str,
+    start_date: str,
+    end_date: str,
+    aoi: ee.Geometry | None,
+    *,
+    bands: list[str] | None,
+    scale: bool,
+    max_cloud_cover: float,
+    mask_clouds: bool,
+    clip: bool,
+    sensor_label: str,
+) -> ee.ImageCollection:
+    """Shared loader for any LC08/LC09 C2L2 collection.
+
+    Parameters
+    ----------
+    collection_id        : Earth Engine collection ID
+    start_date, end_date : ISO date strings "YYYY-MM-DD" (half-open [a, b))
+    aoi                  : optional AOI for bounds filtering and clipping
+    bands                : band names to keep after processing
+    scale                : scale SR_B* to reflectance and ST_B* to Kelvin
+    max_cloud_cover      : maximum CLOUD_COVER
+    mask_clouds          : apply QA_PIXEL cloud/shadow mask
+    clip                 : clip each image to AOI when aoi is provided
+    sensor_label         : label for logging (e.g., "L8" or "L9")
+
+    Returns
+    -------
+    ee.ImageCollection with requested bands; scaling and harmonization are
+    applied only when requested.
+    """
+    print(f"[geets.landsat] Loading {sensor_label}: {collection_id}")
+    print(f"[geets.landsat] Date range: {start_date} → {end_date}")
+    print(f"[geets.landsat] max_cloud_cover={max_cloud_cover}%  "
+          f"mask_clouds={mask_clouds}  scale={scale}  bands={bands or 'all'}")
+
+    col = (
+        ee.ImageCollection(collection_id)
+        .filterDate(start_date, end_date)
+        .filter(ee.Filter.lte(_LC_CLOUD_PROPERTY, max_cloud_cover))
+    )
+
+    if aoi is not None:
+        print("[geets.landsat] Applying AOI filter")
+        col = col.filterBounds(aoi)
+
+    if mask_clouds:
+        col = col.map(_mask_lc_qa_pixel)
+
+    requested_harmonized: list[str] = []
+    requested_native_sr: list[str] = []
+    if bands is not None:
+        requested_harmonized = [b for b in bands if b in _BANDS_HARMONIZED]
+        requested_native_sr = [b for b in bands if b in _L8_BANDS_SRC]
+        if requested_harmonized and requested_native_sr:
+            raise ValueError("bands cannot mix harmonized and native SR band names")
+
+    if scale:
+        col = col.map(_scale_lc_sr)
+    if requested_harmonized:
+        col = col.map(_rename_lc_sr)
+
+    if bands is not None:
+        col = col.select(bands)
+
+    if aoi is not None and clip:
+        print("[geets.landsat] Clipping to AOI")
+        col = col.map(lambda img: img.clip(aoi))
+
+    n = col.size().getInfo()
+    if n == 0:
+        print(f"[geets.landsat] WARNING: {sensor_label} collection is EMPTY (0 images).")
+        print(f"[geets.landsat]   → Check date range ({start_date} – {end_date}),")
+        print(f"[geets.landsat]      max_cloud_cover={max_cloud_cover}%, and AOI.")
+    else:
+        print(f"[geets.landsat] {sensor_label} collection ready: {n} images")
+
+    return col
+
+
 def get_l8(
     start_date: str,
     end_date: str,
@@ -165,50 +246,15 @@ def get_l8(
     ee.ImageCollection with requested bands; scaling and harmonization are
     applied only when requested.
     """
-    print(f"[geets.landsat] Loading L8: {_L8_COLLECTION_ID}")
-    print(f"[geets.landsat] Date range: {start_date} → {end_date}")
-    print(f"[geets.landsat] max_cloud_cover={max_cloud_cover}%  "
-          f"mask_clouds={mask_clouds}  scale={scale}  bands={bands or 'all'}")
-
-    col = (
-        ee.ImageCollection(_L8_COLLECTION_ID)
-        .filterDate(start_date, end_date)
-        .filter(ee.Filter.lte(_LC_CLOUD_PROPERTY, max_cloud_cover))
+    return _load_lc_collection(
+        _L8_COLLECTION_ID,
+        start_date,
+        end_date,
+        aoi,
+        bands=bands,
+        scale=scale,
+        max_cloud_cover=max_cloud_cover,
+        mask_clouds=mask_clouds,
+        clip=clip,
+        sensor_label="L8",
     )
-
-    if aoi is not None:
-        print("[geets.landsat] Applying AOI filter")
-        col = col.filterBounds(aoi)
-
-    if mask_clouds:
-        col = col.map(_mask_lc_qa_pixel)
-
-    requested_harmonized: list[str] = []
-    requested_native_sr: list[str] = []
-    if bands is not None:
-        requested_harmonized = [band for band in bands if band in _BANDS_HARMONIZED]
-        requested_native_sr = [band for band in bands if band in _L8_BANDS_SRC]
-        if requested_harmonized and requested_native_sr:
-            raise ValueError("bands cannot mix harmonized and native SR band names")
-
-    if scale:
-        col = col.map(_scale_lc_sr)
-    if requested_harmonized:
-        col = col.map(_rename_lc_sr)
-
-    if bands is not None:
-        col = col.select(bands)
-
-    if aoi is not None and clip:
-        print("[geets.landsat] Clipping to AOI")
-        col = col.map(lambda img: img.clip(aoi))
-
-    n = col.size().getInfo()
-    if n == 0:
-        print("[geets.landsat] WARNING: L8 collection is EMPTY (0 images).")
-        print(f"[geets.landsat]   → Check date range ({start_date} – {end_date}),")
-        print(f"[geets.landsat]      max_cloud_cover={max_cloud_cover}%, and AOI.")
-    else:
-        print(f"[geets.landsat] L8 collection ready: {n} images")
-
-    return col
