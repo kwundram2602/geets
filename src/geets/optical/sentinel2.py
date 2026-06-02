@@ -8,12 +8,49 @@ from .common import _BANDS_HARMONIZED, _S2_BANDS_SRC, _S2_SCALE
 _S2_COLLECTION_ID  = "COPERNICUS/S2_SR_HARMONIZED"
 _S2_CLOUD_PROPERTY = "CLOUDY_PIXEL_PERCENTAGE"
 
+_S2_SCL_WATER = 6  # SCL Scene Classification class for water bodies
+
 
 def _mask_s2_qa60(img: ee.Image) -> ee.Image:
     """Mask opaque clouds (bit 10) and cirrus (bit 11) using QA60."""
     qa = img.select("QA60")
     mask = qa.bitwiseAnd(1 << 10).eq(0).And(qa.bitwiseAnd(1 << 11).eq(0))
     return img.updateMask(mask)
+
+
+def _mask_s2_water_scl(img: ee.Image) -> ee.Image:
+    """Mask water pixels using the SCL Scene Classification Layer (class 6).
+
+    Must be called on raw S2_SR_HARMONIZED images before band selection or
+    scaling — SCL is not preserved after _scale_s2.
+    """
+    return img.updateMask(img.select("SCL").neq(_S2_SCL_WATER))
+
+
+def water_mask_mndwi(
+    img: ee.Image,
+    *,
+    threshold: float = 0.0,
+) -> ee.Image:
+    """Compute a binary water mask from MNDWI on a scaled, harmonized image.
+
+    Uses the Modified Normalized Difference Water Index (Xu 2006):
+    MNDWI = (Green − SWIR1) / (Green + SWIR1).
+    Pixels with MNDWI >= threshold are classified as water (mask value 1).
+
+    Parameters
+    ----------
+    img       : scaled S2 image with harmonized band names (Green, SWIR1).
+    threshold : MNDWI threshold to separate water from non-water (default 0.0).
+                Lower values include more water; raise to reduce false positives
+                in urban areas and shadows.
+
+    Returns
+    -------
+    Single-band ee.Image named "water_mask" (1 = water, 0 = non-water).
+    """
+    mndwi = img.normalizedDifference(["Green", "SWIR1"])
+    return mndwi.gte(threshold).rename("water_mask")
 
 
 def _scale_s2(img: ee.Image) -> ee.Image:
@@ -35,6 +72,7 @@ def get_s2(
     bands: list[str] | None = None,
     max_cloud_cover: float = 20.0,
     mask_clouds: bool = True,
+    mask_water: bool = False,
     clip: bool = True,
 ) -> ee.ImageCollection:
     """Load a cloud-masked, scaled, band-harmonized Sentinel-2 SR collection.
@@ -49,6 +87,7 @@ def get_s2(
                            None keeps all six harmonized bands.
     max_cloud_cover      : maximum CLOUDY_PIXEL_PERCENTAGE (default 20)
     mask_clouds          : apply QA60 cloud/cirrus mask (default True)
+    mask_water           : mask water pixels via SCL class 6 (default False)
     clip                 : clip each image to AOI when aoi is provided (default True)
 
     Returns
@@ -59,7 +98,7 @@ def get_s2(
     print(f"[geets.sentinel2] Loading S2: {_S2_COLLECTION_ID}")
     print(f"[geets.sentinel2] Date range: {start_date} → {end_date}")
     print(f"[geets.sentinel2] max_cloud_cover={max_cloud_cover}%  "
-          f"mask_clouds={mask_clouds}  bands={bands or 'all'}")
+          f"mask_clouds={mask_clouds}  mask_water={mask_water}  bands={bands or 'all'}")
 
     col = (
         ee.ImageCollection(_S2_COLLECTION_ID)
@@ -73,6 +112,9 @@ def get_s2(
 
     if mask_clouds:
         col = col.map(_mask_s2_qa60)
+
+    if mask_water:
+        col = col.map(_mask_s2_water_scl)
 
     use_harmonized = bands is None or all(b in _BANDS_HARMONIZED for b in bands)
     col = col.map(_scale_s2)

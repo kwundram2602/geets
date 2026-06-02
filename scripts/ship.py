@@ -9,8 +9,7 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    # module sits at src/geets/tools/ship.py
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[1]
 
 
 def _package_name(pyproject: Path) -> str:
@@ -72,7 +71,7 @@ def main() -> int:
     shipped_dir.mkdir(exist_ok=True)
     dest = shipped_dir / wheel.name
     shutil.copy2(wheel, dest)
-    print(f"Copied  {wheel.name} → {dest.relative_to(target)}")
+    print(f"Copied  {wheel.name} -> {dest.relative_to(target)}")
 
     print(f"Installing into {target.name}...")
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
@@ -81,7 +80,7 @@ def main() -> int:
         check=True,
         env=env,
     )
-    print(f"Done — {name} is now available in {target.name}")
+    print(f"Done -- {name} is now available in {target.name}")
     return 0
 
 

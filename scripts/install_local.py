@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    # script sits at top-level scripts/install_local.py -> parents: scripts, repo
     return Path(__file__).resolve().parents[1]
 
 

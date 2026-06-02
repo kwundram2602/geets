@@ -6,7 +6,7 @@ from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
 
-DEFAULT_EE_PROJECT = "ee-kwun"
+DEFAULT_EE_PROJECT = "dummy"
 
 
 def authenticate_ee(**kwargs) -> None:
@@ -15,7 +15,7 @@ def authenticate_ee(**kwargs) -> None:
 
 
 def initialize_ee(project: str = DEFAULT_EE_PROJECT, **kwargs) -> None:
-    """Initialize Earth Engine with default project `ee-kwun`."""
+    """Initialize Earth Engine with default project `dummy`."""
     ee.Initialize(project=project, **kwargs)
 
 

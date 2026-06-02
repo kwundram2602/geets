@@ -172,6 +172,43 @@ def print_imagecoll_attrs(
         print(f"{index}: {', '.join(parts)}")
         
         
+def sort_by_nodata(
+    collection: ee.ImageCollection,
+    geometry: ee.Geometry,
+    *,
+    scale: int = 100,
+    max_pixels: int = 1e8,
+) -> ee.ImageCollection:
+    """Sort a collection ascending by nodata fraction (least nodata first).
+
+    Computes the fraction of masked pixels within *geometry* for each image,
+    attaches it as the ``nodata_fraction`` property, then sorts ascending so
+    that ``collection.first()`` is the image with the least nodata.
+
+    Parameters
+    ----------
+    collection  : input ImageCollection
+    geometry    : region over which to measure nodata
+    scale       : pixel resolution in metres for the reduction (default 100)
+    max_pixels  : maximum number of pixels for reduceRegion (default 1e8)
+    """
+
+    def _add_nodata_fraction(img: ee.Image) -> ee.Image:
+        valid_mask = img.mask().reduce(ee.Reducer.min())
+        stats = valid_mask.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=geometry,
+            scale=scale,
+            maxPixels=max_pixels,
+            bestEffort=True,
+        )
+        valid_frac = ee.Number(stats.get("min", 0))
+        nodata_frac = ee.Number(1).subtract(valid_frac)
+        return img.set("nodata_fraction", nodata_frac)
+
+    return collection.map(_add_nodata_fraction).sort("nodata_fraction")
+
+
 def get_band_stats(
     img: ee.Image,
     geometry: ee.Geometry,

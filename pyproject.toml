@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.10.0,<0.11.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 # Tooling defaults for linting and typechecking (added by uv-project guidance)
 [tool.ruff]
@@ -37,5 +37,10 @@ dev = ["ruff", "ty", "pytest"]
 testpaths = ["tests"]
 
 [project.scripts]
-install-local = "geets.tools.install_local:main"
-ship = "geets.tools.ship:main"
+install-local = "scripts.install_local:main"
+ship = "scripts.ship:main"
+add-git-ref = "scripts.add_git_ref:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/geets", "scripts"]
+
