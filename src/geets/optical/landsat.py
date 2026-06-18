@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ee
-
+from collections.abc import Iterable
 from .common import _BANDS_HARMONIZED, _L8_BANDS_SRC, _L8_OFFSET, _L8_SCALE
 
 _L8_COLLECTION_ID  = "LANDSAT/LC08/C02/T1_L2"
@@ -17,11 +17,42 @@ _LST_C2            = 1.438     # radiation constant c₂ (mK)
 _KELVIN_OFFSET     = 273.15
 
 
-def _mask_lc_qa_pixel(img: ee.Image) -> ee.Image:
-    """Mask clouds (bit 3) and cloud shadow (bit 4) using QA_PIXEL."""
+# QA_PIXEL bit positions for Landsat C2L2 (same layout for L8 and L9).
+_QA_PIXEL_BITS = {
+    "fill":          0,
+    "dilated_cloud": 1,
+    "cirrus":        2,   # L8/L9 only
+    "cloud":         3,
+    "cloud_shadow":  4,
+    "snow":          5,
+    "clear":         6,
+    "water":         7,
+}
+# Default mask: dilated cloud, cirrus, cloud, shadow, snow.
+_DEFAULT_QA_BITS = (1, 2, 3, 4)
+
+
+def _mask_lc_qa_pixel(
+    img: ee.Image,
+    qa_bits: Iterable[int] = _DEFAULT_QA_BITS,
+) -> ee.Image:
+    """Mask pixels flagged in the selected QA_PIXEL bits, plus saturated pixels.
+
+    Parameters
+    ----------
+    img     : raw Landsat C2L2 image with QA_PIXEL and QA_RADSAT bands
+    qa_bits : QA_PIXEL bit positions to mask out. A pixel is dropped if any
+              listed bit is set. Default (1, 2, 3, 4, 5) -> dilated cloud,
+              cirrus, cloud, cloud shadow, snow. See _QA_PIXEL_BITS for the
+              full bit layout. An empty iterable applies no QA_PIXEL masking.
+    """
     qa = img.select("QA_PIXEL")
-    mask = qa.bitwiseAnd(1 << 3).eq(0).And(qa.bitwiseAnd(1 << 4).eq(0))
-    return img.updateMask(mask)
+    mask = ee.Image.constant(1)
+    print(f"[geets.landsat] Masking QA_PIXEL bits: {list(qa_bits)}")
+    for bit in qa_bits:
+        mask = mask.And(qa.bitwiseAnd(1 << bit).eq(0))
+    sat = img.select("QA_RADSAT").eq(0)
+    return img.updateMask(mask).updateMask(sat)
 
 
 def _scale_lc_sr(img: ee.Image) -> ee.Image:
