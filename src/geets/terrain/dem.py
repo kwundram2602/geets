@@ -14,6 +14,7 @@ DEM_COLLECTIONS: dict[str, str] = {
     "SRTM":    "USGS/SRTMGL1_003",
     "ASTER":   "NASA/ASTER_GED/AG100_003",
     "NASADEM": "NASA/NASADEM_HGT/001",
+    "FABDEM":  "projects/sat-io/open-datasets/FABDEM",
 }
 
 _VALID_PRODUCTS: frozenset[str] = frozenset(typing.get_args(DemProduct))
@@ -146,5 +147,31 @@ def load_nasadem(
     """
     return _load_dem(
         DEM_COLLECTIONS["NASADEM"], "elevation", False, False, aoi, clip,
+        products or ["elevation"],
+    )
+
+
+def load_fabdem(
+    aoi: ee.Geometry | None = None,
+    *,
+    products: list[DemProduct] | None = None,
+    clip: bool = True,
+) -> ee.Image:
+    """Load FABDEM (Forest And Buildings removed Copernicus DEM, 30 m).
+
+    FABDEM is distributed as per-tile images in an ImageCollection, so
+    tiles intersecting the AOI are mosaicked into a single image.
+
+    Args:
+        aoi: Optional AOI geometry for filtering and clipping.
+        products: Terrain products to include. Defaults to ["elevation"].
+            Valid values: "elevation", "slope", "aspect", "hillshade".
+        clip: Clip to AOI when aoi is provided.
+
+    Returns:
+        ee.Image with requested bands.
+    """
+    return _load_dem(
+        DEM_COLLECTIONS["FABDEM"], "b1", True, True, aoi, clip,
         products or ["elevation"],
     )

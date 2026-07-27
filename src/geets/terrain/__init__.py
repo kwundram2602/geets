@@ -3,6 +3,7 @@ from .dem import (
     DemProduct,
     load_aster,
     load_copernicus_dem,
+    load_fabdem,
     load_nasadem,
     load_srtm,
 )
@@ -14,4 +15,5 @@ __all__ = [
     "load_srtm",
     "load_aster",
     "load_nasadem",
+    "load_fabdem",
 ]

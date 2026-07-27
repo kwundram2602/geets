@@ -1,7 +1,9 @@
-def test_dem_collections_has_four_sources():
+def test_dem_collections_has_five_sources():
     from geets.terrain import dem
 
-    assert set(dem.DEM_COLLECTIONS.keys()) == {"GLO30", "SRTM", "ASTER", "NASADEM"}
+    assert set(dem.DEM_COLLECTIONS.keys()) == {
+        "GLO30", "SRTM", "ASTER", "NASADEM", "FABDEM",
+    }
 
 
 def test_dem_collections_glo30():
@@ -28,6 +30,12 @@ def test_dem_collections_nasadem():
     assert dem.DEM_COLLECTIONS["NASADEM"] == "NASA/NASADEM_HGT/001"
 
 
+def test_dem_collections_fabdem():
+    from geets.terrain import dem
+
+    assert dem.DEM_COLLECTIONS["FABDEM"] == "projects/sat-io/open-datasets/FABDEM"
+
+
 def test_load_dem_raises_on_invalid_product():
     import pytest
 
@@ -35,7 +43,7 @@ def test_load_dem_raises_on_invalid_product():
 
     with pytest.raises(ValueError, match="Unknown product"):
         dem._load_dem(
-            "COPERNICUS/DEM/GLO30", "DEM", True, None, True, ["invalid"]
+            "COPERNICUS/DEM/GLO30", "DEM", True, True, None, True, ["invalid"]
         )
 
 
@@ -52,7 +60,7 @@ def test_load_dem_uses_mosaic_for_tiled():
 
     with patch.object(dem.ee, "ImageCollection", return_value=mock_col):
         dem._load_dem(
-            "COPERNICUS/DEM/GLO30", "DEM", True, None, True, ["elevation"]
+            "COPERNICUS/DEM/GLO30", "DEM", True, True, None, True, ["elevation"]
         )
         mock_col.mosaic.assert_called_once()
         mock_col.first.assert_not_called()
@@ -71,7 +79,7 @@ def test_load_dem_uses_first_for_non_tiled():
 
     with patch.object(dem.ee, "ImageCollection", return_value=mock_col):
         dem._load_dem(
-            "USGS/SRTMGL1_003", "elevation", False, None, True, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", True, False, None, True, ["elevation"]
         )
         mock_col.first.assert_called_once()
         mock_col.mosaic.assert_not_called()
@@ -98,6 +106,7 @@ def test_load_dem_calls_terrain_products_for_slope():
         dem._load_dem(
             "USGS/SRTMGL1_003",
             "elevation",
+            True,
             False,
             None,
             True,
@@ -121,7 +130,7 @@ def test_load_dem_skips_terrain_products_for_elevation_only():
         dem.ee, "ImageCollection", return_value=mock_col
     ), patch.object(dem.ee.Terrain, "products") as mock_terrain:
         dem._load_dem(
-            "USGS/SRTMGL1_003", "elevation", False, None, True, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", True, False, None, True, ["elevation"]
         )
         mock_terrain.assert_not_called()
 
@@ -142,7 +151,7 @@ def test_load_dem_clips_when_aoi_provided():
 
     with patch.object(dem.ee, "ImageCollection", return_value=mock_col):
         dem._load_dem(
-            "USGS/SRTMGL1_003", "elevation", False, aoi, True, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", True, False, aoi, True, ["elevation"]
         )
         mock_img.clip.assert_called_once_with(aoi)
 
@@ -160,7 +169,7 @@ def test_load_dem_no_clip_when_aoi_none():
 
     with patch.object(dem.ee, "ImageCollection", return_value=mock_col):
         dem._load_dem(
-            "USGS/SRTMGL1_003", "elevation", False, None, True, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", True, False, None, True, ["elevation"]
         )
         mock_img.clip.assert_not_called()
 
@@ -180,7 +189,7 @@ def test_load_dem_no_clip_when_clip_false():
 
     with patch.object(dem.ee, "ImageCollection", return_value=mock_col):
         dem._load_dem(
-            "USGS/SRTMGL1_003", "elevation", False, aoi, False, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", True, False, aoi, False, ["elevation"]
         )
         mock_img.clip.assert_not_called()
 
@@ -193,7 +202,8 @@ def test_load_copernicus_dem_delegates_correctly():
         aoi = MagicMock()
         dem.load_copernicus_dem(aoi, products=["elevation", "slope"], clip=False)
         mock_load.assert_called_once_with(
-            "COPERNICUS/DEM/GLO30", "DEM", True, aoi, False, ["elevation", "slope"]
+            "COPERNICUS/DEM/GLO30", "DEM", True, True, aoi, False,
+            ["elevation", "slope"],
         )
 
 
@@ -204,7 +214,7 @@ def test_load_copernicus_dem_defaults():
     with patch.object(dem, "_load_dem") as mock_load:
         dem.load_copernicus_dem()
         mock_load.assert_called_once_with(
-            "COPERNICUS/DEM/GLO30", "DEM", True, None, True, ["elevation"]
+            "COPERNICUS/DEM/GLO30", "DEM", True, True, None, True, ["elevation"]
         )
 
 
@@ -215,7 +225,7 @@ def test_load_srtm_delegates_correctly():
     with patch.object(dem, "_load_dem") as mock_load:
         dem.load_srtm()
         mock_load.assert_called_once_with(
-            "USGS/SRTMGL1_003", "elevation", False, None, True, ["elevation"]
+            "USGS/SRTMGL1_003", "elevation", False, False, None, True, ["elevation"]
         )
 
 
@@ -226,7 +236,8 @@ def test_load_aster_delegates_correctly():
     with patch.object(dem, "_load_dem") as mock_load:
         dem.load_aster()
         mock_load.assert_called_once_with(
-            "NASA/ASTER_GED/AG100_003", "elevation", False, None, True, ["elevation"]
+            "NASA/ASTER_GED/AG100_003", "elevation", False, False, None, True,
+            ["elevation"],
         )
 
 
@@ -237,5 +248,31 @@ def test_load_nasadem_delegates_correctly():
     with patch.object(dem, "_load_dem") as mock_load:
         dem.load_nasadem()
         mock_load.assert_called_once_with(
-            "NASA/NASADEM_HGT/001", "elevation", False, None, True, ["elevation"]
+            "NASA/NASADEM_HGT/001", "elevation", False, False, None, True,
+            ["elevation"],
+        )
+
+
+def test_load_fabdem_delegates_correctly():
+    from unittest.mock import MagicMock, patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        aoi = MagicMock()
+        dem.load_fabdem(aoi, products=["elevation", "slope"], clip=False)
+        mock_load.assert_called_once_with(
+            "projects/sat-io/open-datasets/FABDEM", "b1", True, True, aoi, False,
+            ["elevation", "slope"],
+        )
+
+
+def test_load_fabdem_defaults():
+    from unittest.mock import patch
+
+    from geets.terrain import dem
+    with patch.object(dem, "_load_dem") as mock_load:
+        dem.load_fabdem()
+        mock_load.assert_called_once_with(
+            "projects/sat-io/open-datasets/FABDEM", "b1", True, True, None, True,
+            ["elevation"],
         )
