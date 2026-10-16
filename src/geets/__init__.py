@@ -9,6 +9,15 @@ from .climate.chirps import (
     load_chirps_daily,
 )
 from .climate.era5 import ERA5_COLLECTIONS, load_era5_daily
+from .config import (
+    authenticate_from_config,
+    config_path,
+    ee_status,
+    init_from_config,
+    load_config,
+    save_config,
+)
+from .files import l_composite, l_dem, l_region_timeseries_csv
 from .modis import (
     MODIS_SETS,
     load_modis_fire,
@@ -62,6 +71,15 @@ from .utils.image_utils import get_image_with_least_cc
 from .utils.output import l_get_outdir, l_set_outdir
 
 __all__ = [
+    "config_path",
+    "load_config",
+    "save_config",
+    "init_from_config",
+    "authenticate_from_config",
+    "ee_status",
+    "l_composite",
+    "l_dem",
+    "l_region_timeseries_csv",
     "find_pairs",
     "export_pairs",
     "ImagePair",

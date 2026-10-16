@@ -75,6 +75,24 @@ The full public API is also importable directly from `geets.*`.
 
 **Image pairs** — `find_pairs`, `export_pairs`, `ImagePair`
 
+**Configuration & authentication** — `config_path`, `load_config`, `save_config`,
+`init_from_config`, `authenticate_from_config`, `ee_status`
+
+- Per-device settings in `~/.config/geets/.env` (override: `GEETS_ENV_FILE`), e.g.
+  `EE_PROJECT=<cloud project id>`; written with mode 600, outside every repo.
+- `authenticate_from_config()` runs the browser login (localhost redirect) and checks
+  the connection; `ee_status()` reports config, stored token and a live round trip.
+
+**File-based API** (AOI vector file in, GeoTIFF/CSV out; initializes EE from the .env)
+
+- `l_composite` — temporal composite (median/mean/min/max/sum/least_cloudy) of
+  Sentinel-2, Landsat 8/9, MODIS NDVI/EVI/LST, ERA5 / ERA5-Land or CHIRPS
+- `l_dem` — DEM plus optional slope/aspect/hillshade (Copernicus, SRTM, ASTER,
+  NASADEM, FABDEM)
+- `l_region_timeseries_csv` — per-image region statistics of one band as CSV
+- Downloads are checked: a request over the ~32 MB limit raises instead of
+  returning a missing file.
+
 Radar (Sentinel-1 GRD) is currently not included.
 
 ## Development
