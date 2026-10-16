@@ -17,7 +17,7 @@ from .config import (
     load_config,
     save_config,
 )
-from .files import l_composite, l_dem, l_region_timeseries_csv
+from .files import l_composite, l_dem, l_image_series, l_region_timeseries_csv
 from .modis import (
     MODIS_SETS,
     load_modis_fire,
@@ -79,6 +79,7 @@ __all__ = [
     "ee_status",
     "l_composite",
     "l_dem",
+    "l_image_series",
     "l_region_timeseries_csv",
     "find_pairs",
     "export_pairs",

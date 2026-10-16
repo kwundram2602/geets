@@ -81,3 +81,30 @@ def test_require_valid_pixels_passes_with_data():
     counts.getInfo.return_value = [42]
     with patch("geets.files.ee.Reducer.count"):
         files.require_valid_pixels(image, MagicMock(), 250, "modis_ndvi")
+
+
+def test_select_series_skips_empty_and_below_threshold():
+    dates = ["2024-06-01", "2024-06-04", "2024-06-06", "2024-06-09"]
+    fractions = [0.0, 0.05, 0.6, None]
+    assert files.select_series(dates, fractions, min_valid_fraction=0.0) == [1, 2]
+    assert files.select_series(dates, fractions, min_valid_fraction=0.5) == [2]
+
+
+def test_series_filenames_are_unique_per_date():
+    names = files.series_filenames("s2", ["2024-06-01", "2024-06-01", "2024-06-04"])
+    assert names == ["s2_20240601", "s2_20240601_2", "s2_20240604"]
+
+
+def test_l_image_series_refuses_too_many_images(tmp_path):
+    col = MagicMock()
+    col.size.return_value.getInfo.return_value = 40
+    with (
+        patch("geets.files.ensure_initialized"),
+        patch("geets.files.aoi_from_file"),
+        patch("geets.files.load_collection", return_value=col),
+        patch("geets.files.mosaic_per_day", return_value=col),
+    ):
+        with pytest.raises(ValueError, match="40 images.*max_images=30"):
+            files.l_image_series(
+                tmp_path / "a.gpkg", "2024-01-01", "2024-12-31", tmp_path / "out"
+            )

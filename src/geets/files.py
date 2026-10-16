@@ -297,3 +297,170 @@ def l_region_timeseries_csv(
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out)
     return out
+
+
+def mosaic_per_day(collection: ee.ImageCollection) -> ee.ImageCollection:
+    """One mosaic per acquisition day (e.g. adjacent Sentinel-2 tiles of one overpass).
+
+    Each mosaic keeps ``system:time_start`` of its day and gets ``date`` (YYYY-MM-dd)
+    and ``n_scenes``.
+    """
+    days = (
+        collection.aggregate_array("system:time_start")
+        .map(lambda t: ee.Date(t).format("YYYY-MM-dd"))
+        .distinct()
+        .sort()
+    )
+
+    def day_mosaic(day):
+        start = ee.Date(day)
+        scenes = collection.filterDate(start, start.advance(1, "day"))
+        return (
+            scenes.mosaic()
+            .set("system:time_start", start.millis())
+            .set("date", day)
+            .set("n_scenes", scenes.size())
+        )
+
+    return ee.ImageCollection(days.map(day_mosaic))
+
+
+def with_valid_fraction(
+    collection: ee.ImageCollection, aoi: ee.Geometry
+) -> ee.ImageCollection:
+    """Add ``valid_fraction``: share of the AOI covered by unmasked pixels (0..1).
+
+    Measured on the first band on a ~200 x 200 sample grid over the AOI, so the
+    check stays cheap for large AOIs. Both counts use the same EPSG:4326 grid: in a
+    scene's own UTM grid the same nominal scale yields cos(lat) times fewer pixels.
+    """
+    check_scale = max(aoi.area(maxError=1).getInfo() ** 0.5 / 200, 10)
+    total = (
+        ee.Image(1)
+        .clip(aoi)
+        .reduceRegion(
+            ee.Reducer.count(), aoi, check_scale, crs="EPSG:4326", maxPixels=1e8
+        )
+        .values()
+        .get(0)
+    )
+
+    def add(img):
+        valid = (
+            img.select(0)
+            .reduceRegion(
+                ee.Reducer.count(), aoi, check_scale, crs="EPSG:4326", maxPixels=1e8
+            )
+            .values()
+            .get(0)
+        )
+        return img.set("valid_fraction", ee.Number(valid).divide(total))
+
+    return collection.map(add)
+
+
+def select_series(
+    dates: list[str], fractions: list[float | None], min_valid_fraction: float = 0.0
+) -> list[int]:
+    """Indices of images worth downloading: some valid pixels and at least the
+    requested share of the AOI covered."""
+    return [
+        i
+        for i, fraction in enumerate(fractions)
+        if fraction and fraction >= min_valid_fraction
+    ]
+
+
+def series_filenames(prefix: str, dates: list[str]) -> list[str]:
+    """``<prefix>_<YYYYMMDD>``, with ``_2``, ``_3``... for repeated dates."""
+    names, seen = [], {}
+    for date in dates:
+        stem = f"{prefix}_{date.replace('-', '')}"
+        seen[stem] = seen.get(stem, 0) + 1
+        names.append(stem if seen[stem] == 1 else f"{stem}_{seen[stem]}")
+    return names
+
+
+def l_image_series(
+    aoi_path: str | Path,
+    start_date: str,
+    end_date: str,
+    output_dir: str | Path,
+    *,
+    dataset: str = "s2",
+    bands: list[str] | None = None,
+    scale: float | None = None,
+    crs: str = "EPSG:4326",
+    max_cloud_cover: float = 20.0,
+    mask_water: bool = False,
+    use_s2cloudless: bool = False,
+    per_day: bool = True,
+    min_valid_fraction: float = 0.0,
+    max_images: int = 30,
+    prefix: str | None = None,
+    aoi_layer: str | None = None,
+) -> list[Path]:
+    """Download every image of a dataset over an AOI file, one GeoTIFF per date.
+
+    Args:
+        dataset, bands, scale, crs, max_cloud_cover, mask_water, use_s2cloudless:
+            As in ``l_composite``.
+        output_dir: Folder for ``<prefix>_<YYYYMMDD>.tif`` files (created if missing).
+        per_day: Mosaic all scenes of one day into one image (Sentinel-2 tiles,
+            Landsat rows). Otherwise every scene is its own file.
+        min_valid_fraction: Skip images whose unmasked pixels cover less than this
+            share of the AOI (0..1). Images without any valid pixel are always skipped.
+        max_images: Refuse longer series instead of starting a huge download.
+        prefix: File name prefix; default is the dataset name.
+
+    Returns:
+        Paths of the written GeoTIFFs in date order.
+    """
+    ensure_initialized()
+    aoi = aoi_from_file(aoi_path, aoi_layer)
+    col = load_collection(
+        dataset,
+        start_date,
+        end_date,
+        aoi,
+        bands=bands,
+        max_cloud_cover=max_cloud_cover,
+        mask_water=mask_water,
+        use_s2cloudless=use_s2cloudless,
+    )
+    series = mosaic_per_day(col) if per_day else col.sort("system:time_start")
+    n = series.size().getInfo()
+    if n == 0:
+        raise ValueError("No images found for this AOI, date range and cloud filter.")
+    if n > max_images:
+        raise ValueError(
+            f"{n} images in this period (more than max_images={max_images}); "
+            "shorten the date range or raise the limit."
+        )
+    # the native scale must come from the source scenes: a mosaic has a 1° default grid
+    scale = scale or native_scale(col)
+    series = with_valid_fraction(series.map(lambda img: img.clip(aoi)), aoi)
+    dates = (
+        series.aggregate_array("system:time_start")
+        .map(lambda t: ee.Date(t).format("YYYY-MM-dd"))
+        .getInfo()
+    )
+    fractions = series.aggregate_array("valid_fraction").getInfo()
+    keep = select_series(dates, fractions, min_valid_fraction)
+    skipped = len(dates) - len(keep)
+    print(
+        f"[geets.files] {len(dates)} images, {len(keep)} to download, "
+        f"{skipped} skipped (valid AOI share below {min_valid_fraction:.0%} or empty)"
+    )
+    images = series.toList(n)
+    names = series_filenames(prefix or dataset.replace(":", "_").lower(), dates)
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for count, i in enumerate(keep, 1):
+        print(
+            f"[geets.files] {count}/{len(keep)}  {dates[i]}  {fractions[i]:.0%} valid"
+        )
+        image = ee.Image(images.get(i))
+        paths.append(download_checked(image, out / f"{names[i]}.tif", aoi, scale, crs))
+    return paths
