@@ -54,7 +54,13 @@ def aoi_from_file(aoi_path: str | Path, layer: str | None = None) -> ee.Geometry
         raise ValueError(f"AOI file {aoi_path} has no features")
     if gdf.crs is None:
         raise ValueError(f"AOI file {aoi_path} has no CRS")
-    return shapely_to_ee(gdf.to_crs("EPSG:4326").union_all())
+    geom = gdf.to_crs("EPSG:4326").union_all()
+    if geom.area == 0:
+        # a point or line AOI silently yields a one-pixel (or empty) download
+        raise ValueError(
+            f"AOI file {aoi_path} has no area ({geom.geom_type}); use a polygon layer"
+        )
+    return shapely_to_ee(geom)
 
 
 def load_collection(
@@ -123,6 +129,32 @@ def composite(
 def native_scale(collection: ee.ImageCollection) -> float:
     """Nominal pixel size (m) of the collection's first band."""
     return ee.Image(collection.first()).select(0).projection().nominalScale().getInfo()
+
+
+def require_valid_pixels(
+    image: ee.Image, aoi: ee.Geometry, scale: float, dataset: str = ""
+) -> None:
+    """Raise if the image has no unmasked pixel in the AOI.
+
+    Otherwise the download succeeds and writes an all-nodata GeoTIFF, which looks
+    like a bug. Typical cause: MODIS land products have no data over open water.
+    """
+    counts = (
+        image.select(0)
+        .reduceRegion(ee.Reducer.count(), aoi, scale, bestEffort=True, maxPixels=1e8)
+        .values()
+        .getInfo()
+    )
+    if not any(counts):
+        hint = (
+            " MODIS land products have no data over water."
+            if "modis" in dataset
+            else ""
+        )
+        raise ValueError(
+            f"No valid pixels in the AOI for {dataset or 'this image'} (all masked: "
+            f"no coverage, clouds or QA filter).{hint}"
+        )
 
 
 def download_checked(
@@ -201,6 +233,7 @@ def l_composite(
     )
     scale = scale or native_scale(col)
     image = composite(col, reducer, dataset).clip(aoi)
+    require_valid_pixels(image, aoi, scale, dataset)
     return download_checked(image, output_path, aoi, scale, crs)
 
 

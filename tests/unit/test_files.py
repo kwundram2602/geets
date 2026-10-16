@@ -55,3 +55,29 @@ def test_download_checked_raises_when_geemap_wrote_nothing(tmp_path):
 def test_l_dem_unknown_source(tmp_path):
     with pytest.raises(ValueError, match="Unknown DEM source"):
         files.l_dem(tmp_path / "a.gpkg", tmp_path / "d.tif", source="nope")
+
+
+def test_aoi_from_file_rejects_point_aoi(tmp_path):
+    from shapely.geometry import Point
+
+    path = tmp_path / "point.gpkg"
+    gpd.GeoDataFrame(geometry=[Point(149.0, -3.1)], crs="EPSG:4326").to_file(path)
+    with pytest.raises(ValueError, match="polygon"):
+        files.aoi_from_file(path)
+
+
+def test_require_valid_pixels_raises_when_aoi_has_no_data():
+    image = MagicMock()
+    counts = image.select.return_value.reduceRegion.return_value.values.return_value
+    counts.getInfo.return_value = [0]
+    with patch("geets.files.ee.Reducer.count"):
+        with pytest.raises(ValueError, match="No valid pixels.*over water"):
+            files.require_valid_pixels(image, MagicMock(), 250, "modis_ndvi")
+
+
+def test_require_valid_pixels_passes_with_data():
+    image = MagicMock()
+    counts = image.select.return_value.reduceRegion.return_value.values.return_value
+    counts.getInfo.return_value = [42]
+    with patch("geets.files.ee.Reducer.count"):
+        files.require_valid_pixels(image, MagicMock(), 250, "modis_ndvi")
