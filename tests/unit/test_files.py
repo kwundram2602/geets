@@ -95,6 +95,32 @@ def test_series_filenames_are_unique_per_date():
     assert names == ["s2_20240601", "s2_20240601_2", "s2_20240604"]
 
 
+def test_series_filenames_add_time_only_on_days_with_several_overpasses():
+    # 2026-06-11: Sentinel-2B (00:27) and Sentinel-2A (00:37) over the same AOI
+    times = ["2026-06-11T00:27", "2026-06-11T00:37", "2026-06-14T00:30"]
+    names = files.series_filenames("s2", times)
+    assert names == ["s2_20260611T0027", "s2_20260611T0037", "s2_20260614"]
+
+
+def test_series_filenames_unique_for_identical_times():
+    names = files.series_filenames("s2", ["2026-06-11T00:37", "2026-06-11T00:37"])
+    assert names == ["s2_20260611T0037", "s2_20260611T0037_2"]
+
+
+@pytest.mark.parametrize(
+    "dataset, keys",
+    [
+        ("s2", ["SPACECRAFT_NAME", "SENSING_ORBIT_NUMBER"]),
+        ("l8l9", ["SPACECRAFT_ID", "WRS_PATH"]),
+        ("l9", ["SPACECRAFT_ID", "WRS_PATH"]),
+        ("modis_ndvi", []),
+        ("era5:ERA5_LAND", []),
+    ],
+)
+def test_overpass_keys_separate_satellites_and_orbits(dataset, keys):
+    assert files.overpass_keys(dataset) == keys
+
+
 def test_l_image_series_refuses_too_many_images(tmp_path):
     col = MagicMock()
     col.size.return_value.getInfo.return_value = 40
@@ -102,7 +128,7 @@ def test_l_image_series_refuses_too_many_images(tmp_path):
         patch("geets.files.ensure_initialized"),
         patch("geets.files.aoi_from_file"),
         patch("geets.files.load_collection", return_value=col),
-        patch("geets.files.mosaic_per_day", return_value=col),
+        patch("geets.files.mosaic_per_overpass", return_value=col),
     ):
         with pytest.raises(ValueError, match="40 images.*max_images=30"):
             files.l_image_series(

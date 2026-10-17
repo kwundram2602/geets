@@ -349,30 +349,50 @@ def l_region_timeseries_csv(
     return out
 
 
-def mosaic_per_day(collection: ee.ImageCollection) -> ee.ImageCollection:
-    """One mosaic per acquisition day (e.g. adjacent Sentinel-2 tiles of one overpass).
+# Scene properties that tell overpasses apart: one day can hold several (e.g. S2A and
+# S2B ten minutes apart in overlapping orbits), and those must never be mosaicked.
+OVERPASS_KEYS = {
+    "s2": ["SPACECRAFT_NAME", "SENSING_ORBIT_NUMBER"],
+    "landsat": ["SPACECRAFT_ID", "WRS_PATH"],
+}
 
-    Each mosaic keeps ``system:time_start`` of its day and gets ``date`` (YYYY-MM-dd)
-    and ``n_scenes``.
+
+def overpass_keys(dataset: str) -> list[str]:
+    """Properties that, together with the date, identify one overpass of ``dataset``."""
+    return OVERPASS_KEYS.get(dataset_family(dataset), [])
+
+
+def mosaic_per_overpass(
+    collection: ee.ImageCollection, keys: list[str] | None = None
+) -> ee.ImageCollection:
+    """One mosaic per overpass: the adjacent tiles or rows of one acquisition.
+
+    Scenes are grouped by date plus ``keys`` (see ``overpass_keys``), so two
+    satellites passing on the same day give two images instead of one image stitched
+    from both. Each mosaic gets ``system:time_start`` of its first scene, ``date``
+    (YYYY-MM-dd), ``overpass`` and ``n_scenes``; the result is in time order.
     """
-    days = (
-        collection.aggregate_array("system:time_start")
-        .map(lambda t: ee.Date(t).format("YYYY-MM-dd"))
-        .distinct()
-        .sort()
-    )
+    keys = keys or []
 
-    def day_mosaic(day):
-        start = ee.Date(day)
-        scenes = collection.filterDate(start, start.advance(1, "day"))
+    def tag(img):
+        parts = [img.date().format("YYYY-MM-dd")] + [img.get(k) for k in keys]
+        return img.set("overpass", ee.List(parts).join("_"))
+
+    tagged = collection.map(tag)
+
+    def overpass_mosaic(key):
+        scenes = tagged.filter(ee.Filter.eq("overpass", key))
+        start = ee.Date(scenes.aggregate_min("system:time_start"))
         return (
             scenes.mosaic()
             .set("system:time_start", start.millis())
-            .set("date", day)
+            .set("date", start.format("YYYY-MM-dd"))
+            .set("overpass", key)
             .set("n_scenes", scenes.size())
         )
 
-    return ee.ImageCollection(days.map(day_mosaic))
+    overpasses = tagged.aggregate_array("overpass").distinct()
+    return ee.ImageCollection(overpasses.map(overpass_mosaic)).sort("system:time_start")
 
 
 def with_valid_fraction(
@@ -422,10 +442,16 @@ def select_series(
 
 
 def series_filenames(prefix: str, dates: list[str]) -> list[str]:
-    """``<prefix>_<YYYYMMDD>``, with ``_2``, ``_3``... for repeated dates."""
+    """``<prefix>_<YYYYMMDD>`` from ``YYYY-MM-dd`` or ``YYYY-MM-ddTHH:mm`` strings.
+
+    Days with several images get the time (``<prefix>_<YYYYMMDD>T<HHMM>``); names
+    that are still repeated get ``_2``, ``_3``...
+    """
+    days = [d.split("T")[0] for d in dates]
     names, seen = [], {}
-    for date in dates:
-        stem = f"{prefix}_{date.replace('-', '')}"
+    for day, date in zip(days, dates, strict=True):
+        stamp = date if days.count(day) > 1 else day
+        stem = f"{prefix}_{stamp.replace('-', '').replace(':', '')}"
         seen[stem] = seen.get(stem, 0) + 1
         names.append(stem if seen[stem] == 1 else f"{stem}_{seen[stem]}")
     return names
@@ -453,8 +479,10 @@ def l_image_series(
     Args:
         dataset, bands, scale, crs, **options: As in ``l_composite``.
         output_dir: Folder for ``<prefix>_<YYYYMMDD>.tif`` files (created if missing).
-        per_day: Mosaic all scenes of one day into one image (Sentinel-2 tiles,
-            Landsat rows). Otherwise every scene is its own file.
+        per_day: Mosaic the scenes of one overpass into one image (adjacent
+            Sentinel-2 tiles, Landsat rows; see ``mosaic_per_overpass``). Two
+            overpasses on the same day stay separate files with the time in the
+            name. Otherwise every scene is its own file.
         min_valid_fraction: Skip images whose unmasked pixels cover less than this
             share of the AOI (0..1). Images without any valid pixel are always skipped.
         max_images: Refuse longer series instead of starting a huge download.
@@ -473,7 +501,11 @@ def l_image_series(
         bands=bands,
         **options,
     )
-    series = mosaic_per_day(col) if per_day else col.sort("system:time_start")
+    series = (
+        mosaic_per_overpass(col, overpass_keys(dataset))
+        if per_day
+        else col.sort("system:time_start")
+    )
     n = series.size().getInfo()
     if n == 0:
         raise ValueError("No images found for this AOI, date range and cloud filter.")
@@ -487,7 +519,7 @@ def l_image_series(
     series = with_valid_fraction(series.map(lambda img: img.clip(aoi)), aoi)
     dates = (
         series.aggregate_array("system:time_start")
-        .map(lambda t: ee.Date(t).format("YYYY-MM-dd"))
+        .map(lambda t: ee.Date(t).format("YYYY-MM-dd'T'HH:mm"))
         .getInfo()
     )
     fractions = series.aggregate_array("valid_fraction").getInfo()

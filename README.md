@@ -87,7 +87,8 @@ The full public API is also importable directly from `geets.*`.
 
 - `l_composite` — temporal composite (median/mean/min/max/sum/least_cloudy) of
   Sentinel-2, Landsat 8/9, MODIS NDVI/EVI/LST, ERA5 / ERA5-Land or CHIRPS
-- `l_image_series` — one GeoTIFF per date (optionally one mosaic per day), skipping
+- `l_image_series` — one GeoTIFF per date (optionally one mosaic per overpass: adjacent tiles of one
+  satellite pass; two satellites on the same day stay separate files), skipping
   images whose valid pixels cover too little of the AOI; refuses more than
   `max_images` downloads
 - `l_dem` — DEM plus optional slope/aspect/hillshade (Copernicus, SRTM, ASTER,
