@@ -15,34 +15,40 @@ NIR_DRK_THRESH = 0.15
 CLD_PRJ_DIST = 1
 BUFFER = 50
 
-def _mask_s2_qa60(img: ee.Image) -> ee.Image:
-    """Mask opaque clouds (bit 10) and cirrus (bit 11) using QA60."""
+def _mask_s2_qa60(img: ee.Image, mask_cirrus: bool = True) -> ee.Image:
+    """Mask opaque clouds (bit 10) and, optionally, cirrus (bit 11) using QA60."""
     qa = img.select("QA60")
-    mask = qa.bitwiseAnd(1 << 10).eq(0).And(qa.bitwiseAnd(1 << 11).eq(0))
+    mask = qa.bitwiseAnd(1 << 10).eq(0)
+    if mask_cirrus:
+        mask = mask.And(qa.bitwiseAnd(1 << 11).eq(0))
     return img.updateMask(mask)
 
-def _add_cloud_bands(img: ee.Image) -> ee.Image:
+def _add_cloud_bands(img: ee.Image, cld_prb_thresh: float = CLD_PRB_THRESH) -> ee.Image:
     """Add s2cloudless probability and binary cloud mask bands to the image."""
     cld_prb = ee.Image(img.get("s2cloudless")).select("probability")
-    is_cloud = cld_prb.gt(CLD_PRB_THRESH).rename("clouds")
+    is_cloud = cld_prb.gt(cld_prb_thresh).rename("clouds")
     return img.addBands(ee.Image([cld_prb, is_cloud]))
 
 
-def _add_shadow_bands(img: ee.Image) -> ee.Image:
+def _add_shadow_bands(
+    img: ee.Image,
+    nir_drk_thresh: float = NIR_DRK_THRESH,
+    cld_prj_dist: float = CLD_PRJ_DIST,
+) -> ee.Image:
     """Add dark_pixels, cloud_transform, and shadows bands for shadow detection.
 
     Requires 'clouds' band (from _add_cloud_bands), SCL, and B8 on the image.
     """
     not_water = img.select("SCL").neq(_S2_SCL_WATER)
     dark_pixels = (
-        img.select("B8").lt(NIR_DRK_THRESH * 1e4).multiply(not_water).rename("dark_pixels")
+        img.select("B8").lt(nir_drk_thresh * 1e4).multiply(not_water).rename("dark_pixels")
     )
     shadow_azimuth = ee.Number(90).subtract(
         ee.Number(img.get("MEAN_SOLAR_AZIMUTH_ANGLE"))
     )
     cld_proj = (
         img.select("clouds")
-        .directionalDistanceTransform(shadow_azimuth, CLD_PRJ_DIST * 10)
+        .directionalDistanceTransform(shadow_azimuth, cld_prj_dist * 10)
         .reproject(crs=img.select(0).projection(), scale=100)
         .select("distance")
         .mask()
@@ -52,20 +58,26 @@ def _add_shadow_bands(img: ee.Image) -> ee.Image:
     return img.addBands(ee.Image([dark_pixels, cld_proj, shadows]))
 
 
-def _add_cld_shdw_mask(img: ee.Image) -> ee.Image:
+def _add_cld_shdw_mask(
+    img: ee.Image,
+    cld_prb_thresh: float = CLD_PRB_THRESH,
+    nir_drk_thresh: float = NIR_DRK_THRESH,
+    cld_prj_dist: float = CLD_PRJ_DIST,
+    buffer: float = BUFFER,
+) -> ee.Image:
     """Add combined cloud+shadow mask band ('cloudmask') to the image.
 
     Applies morphological cleanup: focalMin(2) to remove small patches, then
-    focalMax(BUFFER*2/20) to dilate edges; both at 20 m scale.
+    focalMax(buffer*2/20) to dilate edges; both at 20 m scale.
     """
-    img_cloud = _add_cloud_bands(img)
-    img_cloud_shadow = _add_shadow_bands(img_cloud)
+    img_cloud = _add_cloud_bands(img, cld_prb_thresh)
+    img_cloud_shadow = _add_shadow_bands(img_cloud, nir_drk_thresh, cld_prj_dist)
     is_cld_shdw = (
         img_cloud_shadow.select("clouds").add(img_cloud_shadow.select("shadows")).gt(0)
     )
     is_cld_shdw = (
         is_cld_shdw.focalMin(2)
-        .focalMax(BUFFER * 2 / 20)
+        .focalMax(buffer * 2 / 20)
         .reproject(crs=img.select(0).projection(), scale=20)
         .rename("cloudmask")
     )
@@ -134,6 +146,11 @@ def get_s2(
     mask_water: bool = False,
     use_s2cloudless: bool = False,
     clip: bool = True,
+    mask_cirrus: bool = True,
+    cld_prb_thresh: float = CLD_PRB_THRESH,
+    nir_drk_thresh: float = NIR_DRK_THRESH,
+    cld_prj_dist: float = CLD_PRJ_DIST,
+    buffer: float = BUFFER,
 ) -> ee.ImageCollection:
     """Load a cloud-masked, scaled, band-harmonized Sentinel-2 SR collection.
 
@@ -146,12 +163,20 @@ def get_s2(
                            any other name keeps the original sensor band name.
                            None keeps all six harmonized bands.
     max_cloud_cover      : maximum CLOUDY_PIXEL_PERCENTAGE (default 20)
-    mask_clouds          : apply QA60 cloud/cirrus mask (default True)
+    mask_clouds          : apply QA60 opaque-cloud mask (default True). QA60 is
+                           empty (all 0) for scenes from 2022 to early 2024, e.g.
+                           all of 2023, so it masks nothing there; use
+                           use_s2cloudless for those dates.
+    mask_cirrus          : with mask_clouds, also mask QA60 cirrus (default True)
     mask_water           : mask water pixels via SCL class 6 (default False)
     use_s2cloudless      : join COPERNICUS/S2_CLOUD_PROBABILITY and apply
                            probabilistic cloud+shadow masking (default False).
-                           Uses module-level CLD_PRB_THRESH, NIR_DRK_THRESH,
-                           CLD_PRJ_DIST, and BUFFER constants.
+                           Independent of mask_clouds; both can be combined.
+    cld_prb_thresh       : s2cloudless cloud probability threshold in % (default 50)
+    nir_drk_thresh       : NIR reflectance below which a pixel may be shadow
+                           (default 0.15)
+    cld_prj_dist         : max cloud-to-shadow projection distance in km (default 1)
+    buffer               : dilation of the cloud/shadow mask in m (default 50)
     clip                 : clip each image to AOI when aoi is provided (default True)
 
     Returns
@@ -178,7 +203,11 @@ def get_s2(
         col = col.filterBounds(aoi)
 
     if use_s2cloudless:
-        print("[geets.sentinel2] Joining COPERNICUS/S2_CLOUD_PROBABILITY")
+        print(
+            "[geets.sentinel2] Joining COPERNICUS/S2_CLOUD_PROBABILITY "
+            f"(cld_prb_thresh={cld_prb_thresh}, nir_drk_thresh={nir_drk_thresh}, "
+            f"cld_prj_dist={cld_prj_dist} km, buffer={buffer} m)"
+        )
         s2_cloudless_col = ee.ImageCollection("COPERNICUS/S2_CLOUD_PROBABILITY").filterDate(
             start_date, end_date
         )
@@ -194,10 +223,14 @@ def get_s2(
                 ),
             )
         )
-        col = col.map(_add_cld_shdw_mask).map(_apply_cld_shdw_mask)
+        col = col.map(
+            lambda img: _add_cld_shdw_mask(
+                img, cld_prb_thresh, nir_drk_thresh, cld_prj_dist, buffer
+            )
+        ).map(_apply_cld_shdw_mask)
 
     if mask_clouds:
-        col = col.map(_mask_s2_qa60)
+        col = col.map(lambda img: _mask_s2_qa60(img, mask_cirrus))
 
     if mask_water:
         col = col.map(_mask_s2_water_scl)

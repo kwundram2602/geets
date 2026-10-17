@@ -31,13 +31,32 @@ from .utils.gee import shapely_to_ee
 
 HARMONIZED_BANDS = ["Blue", "Green", "Red", "NIR", "SWIR1", "SWIR2"]
 REDUCERS = ("median", "mean", "min", "max", "sum", "least_cloudy")
-OPTICAL = {"s2": get_s2, "l8l9": get_l8l9, "l8": get_l8, "l9": get_l9}
+OPTICAL = ("s2", "l8l9", "l8", "l9")
 CLOUD_PROPERTY = {"s2": "CLOUDY_PIXEL_PERCENTAGE"}  # Landsat: CLOUD_COVER
 MODIS = ("modis_ndvi", "modis_evi", "modis_lst_day", "modis_lst_night")
 CLIMATE = tuple(f"era5:{d}" for d in ERA5_COLLECTIONS) + tuple(
     f"chirps:{d}" for d in CHIRPS_COLLECTIONS
 )
 DATASETS = tuple(OPTICAL) + MODIS + CLIMATE
+# Masking and scene-filter options a caller may set per dataset family; scaling,
+# clipping and band naming stay fixed by the file API. Defaults: see the loaders.
+MASK_OPTIONS = {
+    "s2": (
+        "max_cloud_cover",
+        "mask_clouds",
+        "mask_cirrus",
+        "mask_water",
+        "use_s2cloudless",
+        "cld_prb_thresh",
+        "nir_drk_thresh",
+        "cld_prj_dist",
+        "buffer",
+    ),
+    "landsat": ("max_cloud_cover", "mask_clouds", "qa_bits", "mask_saturated"),
+    "modis_vi": ("mask_clouds", "max_qa"),
+    "modis_lst": ("mask_clouds",),
+    "climate": (),
+}
 DEMS = {
     "copernicus": load_copernicus_dem,
     "srtm": load_srtm,
@@ -63,6 +82,21 @@ def aoi_from_file(aoi_path: str | Path, layer: str | None = None) -> ee.Geometry
     return shapely_to_ee(geom)
 
 
+def dataset_family(dataset: str) -> str:
+    """Key of ``MASK_OPTIONS`` for a dataset; raises for unknown datasets."""
+    if dataset == "s2":
+        return "s2"
+    if dataset in ("l8l9", "l8", "l9"):
+        return "landsat"
+    if dataset in ("modis_ndvi", "modis_evi"):
+        return "modis_vi"
+    if dataset in ("modis_lst_day", "modis_lst_night"):
+        return "modis_lst"
+    if dataset in CLIMATE:
+        return "climate"
+    raise ValueError(f"Unknown dataset {dataset!r}. Choose from: {list(DATASETS)}")
+
+
 def load_collection(
     dataset: str,
     start_date: str,
@@ -70,46 +104,58 @@ def load_collection(
     aoi: ee.Geometry,
     *,
     bands: list[str] | None = None,
-    max_cloud_cover: float = 20.0,
-    mask_water: bool = False,
-    use_s2cloudless: bool = False,
+    **options,
 ) -> ee.ImageCollection:
-    """Masked and scaled collection for one of ``DATASETS`` (see module constants)."""
-    if dataset in OPTICAL:
-        if dataset == "s2":
-            return get_s2(
-                start_date,
-                end_date,
-                aoi,
-                bands=bands or HARMONIZED_BANDS,
-                max_cloud_cover=max_cloud_cover,
-                mask_water=mask_water,
-                use_s2cloudless=use_s2cloudless,
-            )
-        return OPTICAL[dataset](
+    """Scaled collection for one of ``DATASETS``, masked as requested.
+
+    ``options`` are the masking/scene-filter arguments of the dataset's loader, listed
+    per dataset family in ``MASK_OPTIONS``:
+
+    - s2 (``get_s2``): max_cloud_cover, mask_clouds (QA60), mask_cirrus, mask_water
+      (SCL), use_s2cloudless, cld_prb_thresh, nir_drk_thresh, cld_prj_dist, buffer
+    - Landsat (``get_l8``/``get_l9``/``get_l8l9``): max_cloud_cover, mask_clouds
+      (default True here), qa_bits, mask_saturated
+    - MODIS VI (``load_modis_vi``): mask_clouds, max_qa; MODIS LST: mask_clouds
+    - ERA5 / CHIRPS: none
+
+    An option that does not apply to the dataset raises ValueError instead of being
+    ignored silently.
+    """
+    family = dataset_family(dataset)
+    allowed = MASK_OPTIONS[family]
+    unknown = sorted(set(options) - set(allowed))
+    if unknown:
+        raise ValueError(
+            f"Option(s) {unknown} not available for {dataset}; "
+            f"available: {list(allowed) or 'none'}"
+        )
+    if family == "s2":
+        return get_s2(
+            start_date, end_date, aoi, bands=bands or HARMONIZED_BANDS, **options
+        )
+    if family == "landsat":
+        loader = {"l8l9": get_l8l9, "l8": get_l8, "l9": get_l9}[dataset]
+        return loader(
             start_date,
             end_date,
             aoi,
             bands=bands or HARMONIZED_BANDS,
             scale=True,
-            max_cloud_cover=max_cloud_cover,
-            mask_clouds=True,
             clip=True,
+            **{"mask_clouds": True, **options},
         )
-    if dataset in ("modis_ndvi", "modis_evi"):
-        return load_modis_vi(
-            start_date, end_date, aoi, band=dataset.split("_")[1].upper()
-        )
-    if dataset in ("modis_lst_day", "modis_lst_night"):
+    if family == "modis_vi":
+        band = dataset.split("_")[1].upper()
+        return load_modis_vi(start_date, end_date, aoi, band=band, **options)
+    if family == "modis_lst":
+        time_of_day = dataset.rsplit("_", 1)[1]
         return load_modis_lst(
-            start_date, end_date, aoi, time_of_day=dataset.rsplit("_", 1)[1]
+            start_date, end_date, aoi, time_of_day=time_of_day, **options
         )
     source, _, name = dataset.partition(":")
-    if source == "era5" and name in ERA5_COLLECTIONS:
+    if source == "era5":
         return load_era5_daily(start_date, end_date, aoi, dataset=name, bands=bands)
-    if source == "chirps" and name in CHIRPS_COLLECTIONS:
-        return load_chirps_daily(start_date, end_date, aoi, dataset=name)
-    raise ValueError(f"Unknown dataset {dataset!r}. Choose from: {list(DATASETS)}")
+    return load_chirps_daily(start_date, end_date, aoi, dataset=name)
 
 
 def composite(
@@ -196,10 +242,8 @@ def l_composite(
     reducer: str = "median",
     scale: float | None = None,
     crs: str = "EPSG:4326",
-    max_cloud_cover: float = 20.0,
-    mask_water: bool = False,
-    use_s2cloudless: bool = False,
     aoi_layer: str | None = None,
+    **options,
 ) -> Path:
     """Temporal composite of a dataset over an AOI file, downloaded as GeoTIFF.
 
@@ -215,9 +259,10 @@ def l_composite(
         reducer: "median", "mean", "min", "max", "sum" or "least_cloudy" (optical).
         scale: Pixel size in metres; None uses the dataset's native resolution.
         crs: CRS of the GeoTIFF.
-        max_cloud_cover, mask_water, use_s2cloudless: Optical scene filters
-            (see get_s2).
         aoi_layer: Layer inside ``aoi_path`` (GeoPackage with several layers).
+        **options: Masking and scene filters of the dataset (``MASK_OPTIONS``,
+            documented in ``load_collection``), e.g. ``mask_clouds=False``,
+            ``qa_bits=["cloud", "cloud_shadow"]``, ``cld_prb_thresh=40``.
     """
     ensure_initialized()
     aoi = aoi_from_file(aoi_path, aoi_layer)
@@ -227,9 +272,7 @@ def l_composite(
         end_date,
         aoi,
         bands=bands,
-        max_cloud_cover=max_cloud_cover,
-        mask_water=mask_water,
-        use_s2cloudless=use_s2cloudless,
+        **options,
     )
     scale = scale or native_scale(col)
     image = composite(col, reducer, dataset).clip(aoi)
@@ -272,6 +315,7 @@ def l_region_timeseries_csv(
     scale: float | None = None,
     max_cloud_cover: float = 20.0,
     aoi_layer: str | None = None,
+    **options,
 ) -> Path:
     """Per-image percentile/mean statistics of one band over an AOI file, as CSV.
 
@@ -279,7 +323,11 @@ def l_region_timeseries_csv(
         dataset: See ``l_composite``.
         band: Band to reduce; default is the dataset's first band.
         scale: Reduction scale in metres; None uses the native resolution.
+        max_cloud_cover: Scene filter for optical datasets; not used for others.
+        **options: Further masking options of the dataset (see ``load_collection``).
     """
+    if dataset in OPTICAL:
+        options.setdefault("max_cloud_cover", max_cloud_cover)
     ensure_initialized()
     aoi = aoi_from_file(aoi_path, aoi_layer)
     col = load_collection(
@@ -288,7 +336,7 @@ def l_region_timeseries_csv(
         end_date,
         aoi,
         bands=[band] if band and dataset in OPTICAL else None,
-        max_cloud_cover=max_cloud_cover,
+        **options,
     )
     band = band or ee.Image(col.first()).bandNames().get(0).getInfo()
     scale = scale or native_scale(col.select(band))
@@ -391,20 +439,17 @@ def l_image_series(
     bands: list[str] | None = None,
     scale: float | None = None,
     crs: str = "EPSG:4326",
-    max_cloud_cover: float = 20.0,
-    mask_water: bool = False,
-    use_s2cloudless: bool = False,
     per_day: bool = True,
     min_valid_fraction: float = 0.0,
     max_images: int = 30,
     prefix: str | None = None,
     aoi_layer: str | None = None,
+    **options,
 ) -> list[Path]:
     """Download every image of a dataset over an AOI file, one GeoTIFF per date.
 
     Args:
-        dataset, bands, scale, crs, max_cloud_cover, mask_water, use_s2cloudless:
-            As in ``l_composite``.
+        dataset, bands, scale, crs, **options: As in ``l_composite``.
         output_dir: Folder for ``<prefix>_<YYYYMMDD>.tif`` files (created if missing).
         per_day: Mosaic all scenes of one day into one image (Sentinel-2 tiles,
             Landsat rows). Otherwise every scene is its own file.
@@ -424,9 +469,7 @@ def l_image_series(
         end_date,
         aoi,
         bands=bands,
-        max_cloud_cover=max_cloud_cover,
-        mask_water=mask_water,
-        use_s2cloudless=use_s2cloudless,
+        **options,
     )
     series = mosaic_per_day(col) if per_day else col.sort("system:time_start")
     n = series.size().getInfo()
