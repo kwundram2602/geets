@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 
 import ee
 import geemap
+
+# Scene properties naming the tile of an image: Sentinel-2 MGRS tile, Landsat path/row
+_TILE_PROPERTIES = ["MGRS_TILE", "WRS_PATH", "WRS_ROW"]
 
 
 def _normalize_region(
@@ -20,6 +25,50 @@ def _normalize_region(
     if isinstance(region, ee.FeatureCollection):
         region = region.geometry()
     return region.transform("EPSG:4326", maxError=1)
+
+
+def _image_meta(collection: ee.ImageCollection) -> list[dict]:
+    """Time, tile and index of every image, fetched in one request."""
+
+    def meta(img):
+        return ee.Feature(
+            None, {"t": img.date().millis(), "index": img.get("system:index")}
+        ).copyProperties(img, _TILE_PROPERTIES)
+
+    features = collection.map(meta).getInfo()["features"]
+    metas = []
+    for f in features:
+        p = f["properties"]
+        if p.get("MGRS_TILE"):
+            tile = p["MGRS_TILE"]
+        elif p.get("WRS_PATH") is not None and p.get("WRS_ROW") is not None:
+            tile = f"{int(p['WRS_PATH']):03d}{int(p['WRS_ROW']):03d}"
+        else:
+            tile = ""
+        metas.append({"t": p["t"], "tile": tile, "index": p.get("index") or ""})
+    return metas
+
+
+def export_suffixes(metas: list[dict]) -> list[str]:
+    """Unique file-name suffixes: ``YYYYMMDD``, or ``YYYYMMDDTHHMM_<tile>`` on days
+    with several images (tiles of one overpass, or several overpasses).
+
+    ``metas`` as returned by ``_image_meta``: ``t`` (ms), ``tile`` and ``index``
+    (used when there is no tile). Names still repeated get ``_2``, ``_3``...
+    """
+    times = [datetime.fromtimestamp(m["t"] / 1000, UTC) for m in metas]
+    days = Counter(t.strftime("%Y%m%d") for t in times)
+    names, seen = [], Counter()
+    for m, t in zip(metas, times, strict=True):
+        day = t.strftime("%Y%m%d")
+        name = (
+            day
+            if days[day] == 1
+            else f"{t.strftime('%Y%m%dT%H%M')}_{m['tile'] or m['index']}"
+        )
+        seen[name] += 1
+        names.append(name if seen[name] == 1 else f"{name}_{seen[name]}")
+    return names
 
 
 def l_download_image(
@@ -71,16 +120,18 @@ def l_download_imagecollection(
 ) -> list[Path]:
     """Download every image in a collection to local disk as GeoTIFF.
 
-    Files are named <prefix>_<YYYYMMDD>.tif. Limited to ~32 MB per file.
+    Files are named <prefix>_<YYYYMMDD>.tif; on days with several images (tiles
+    or overpasses) <prefix>_<YYYYMMDD>T<HHMM>_<tile>.tif (see ``export_suffixes``),
+    so no file overwrites another. Limited to ~32 MB per file.
     """
     out = Path(outdir)
     images = collection.toList(collection.size())
     n = collection.size().getInfo()
+    suffixes = export_suffixes(_image_meta(collection)) if n else []
     paths: list[Path] = []
     for i in range(n):
         img = ee.Image(images.get(i))
-        date = img.date().format("YYYYMMdd").getInfo()
-        filename = f"{prefix}_{date}"
+        filename = f"{prefix}_{suffixes[i]}"
         print(f"[geets.exports] {i + 1}/{n}  → {filename}.tif")
         path = l_download_image(img, out, filename, region=region, scale=scale, crs=crs)
         paths.append(path)
@@ -134,20 +185,21 @@ def export_imagecollection_to_drive(
 ) -> list[ee.batch.Task]:
     """Submit async Google Drive export tasks for every image in a collection.
 
-    Each task gets description and fileNamePrefix suffixed with _<YYYYMMDD>.
+    Each task gets description and fileNamePrefix suffixed with _<YYYYMMDD>, or
+    _<YYYYMMDD>T<HHMM>_<tile> on days with several images (see ``export_suffixes``).
     Tasks are started immediately; this function does not wait for completion.
     """
     images = collection.toList(collection.size())
     n = collection.size().getInfo()
+    suffixes = export_suffixes(_image_meta(collection)) if n else []
     tasks: list[ee.batch.Task] = []
     for i in range(n):
         img = ee.Image(images.get(i))
-        date = img.date().format("YYYYMMdd").getInfo()
         task = export_image_to_drive(
             img,
-            description=f"{description}_{date}",
+            description=f"{description}_{suffixes[i]}",
             folder=folder,
-            file_name_prefix=f"{file_name_prefix}_{date}",
+            file_name_prefix=f"{file_name_prefix}_{suffixes[i]}",
             region=region,
             scale=scale,
             crs=crs,

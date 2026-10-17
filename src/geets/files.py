@@ -32,7 +32,6 @@ from .utils.gee import shapely_to_ee
 HARMONIZED_BANDS = ["Blue", "Green", "Red", "NIR", "SWIR1", "SWIR2"]
 REDUCERS = ("median", "mean", "min", "max", "sum", "least_cloudy")
 OPTICAL = ("s2", "l8l9", "l8", "l9")
-CLOUD_PROPERTY = {"s2": "CLOUDY_PIXEL_PERCENTAGE"}  # Landsat: CLOUD_COVER
 MODIS = ("modis_ndvi", "modis_evi", "modis_lst_day", "modis_lst_night")
 CLIMATE = tuple(f"era5:{d}" for d in ERA5_COLLECTIONS) + tuple(
     f"chirps:{d}" for d in CHIRPS_COLLECTIONS
@@ -161,16 +160,28 @@ def load_collection(
 
 
 def composite(
-    collection: ee.ImageCollection, reducer: str, dataset: str = ""
+    collection: ee.ImageCollection,
+    reducer: str,
+    dataset: str = "",
+    aoi: ee.Geometry | None = None,
 ) -> ee.Image:
-    """Reduce a collection to one image; ``least_cloudy`` picks a single scene."""
+    """Reduce a collection to one image.
+
+    ``least_cloudy`` picks one overpass (its tiles mosaicked, see
+    ``mosaic_per_overpass``): the one with the largest unmasked share of ``aoi``.
+    With cloud masking on (the default) that is the most cloud-free overpass over
+    the AOI; scene-wide cloud percentages are not used, as they describe whole tiles.
+    """
     if reducer not in REDUCERS:
         raise ValueError(f"Unknown reducer {reducer!r}. Choose from: {list(REDUCERS)}")
     if collection.size().getInfo() == 0:
         raise ValueError("No images found for this AOI, date range and cloud filter.")
     if reducer == "least_cloudy":
-        prop = CLOUD_PROPERTY.get(dataset, "CLOUD_COVER")
-        return ee.Image(collection.sort(prop).first())
+        if aoi is None:
+            raise ValueError("least_cloudy needs the AOI to rank overpasses.")
+        overpasses = mosaic_per_overpass(collection, overpass_keys(dataset))
+        ranked = with_valid_fraction(overpasses, aoi)
+        return ee.Image(ranked.sort("valid_fraction", False).first())
     return getattr(collection, reducer)()
 
 
@@ -277,7 +288,7 @@ def l_composite(
         **options,
     )
     scale = scale or native_scale(col)
-    image = composite(col, reducer, dataset).clip(aoi)
+    image = composite(col, reducer, dataset, aoi).clip(aoi)
     require_valid_pixels(image, aoi, scale, dataset)
     return download_checked(image, output_path, aoi, scale, crs)
 
@@ -319,7 +330,11 @@ def l_region_timeseries_csv(
     aoi_layer: str | None = None,
     **options,
 ) -> Path:
-    """Per-image percentile/mean statistics of one band over an AOI file, as CSV.
+    """Percentile/mean statistics of one band over an AOI file per overpass, as CSV.
+
+    Scenes of one overpass (adjacent tiles) are mosaicked first, so every row covers
+    the whole AOI; the ``date`` column holds date and time (``YYYY-MM-ddTHH:mm``), so
+    two overpasses on one day stay apart.
 
     Args:
         dataset: See ``l_composite``.
@@ -342,7 +357,15 @@ def l_region_timeseries_csv(
     )
     band = band or ee.Image(col.first()).bandNames().get(0).getInfo()
     scale = scale or native_scale(col.select(band))
-    df = reduce_region_stats(col, aoi, band, scale=int(scale), export_csv=False)
+    overpasses = mosaic_per_overpass(col, overpass_keys(dataset))
+    df = reduce_region_stats(
+        overpasses,
+        aoi,
+        band,
+        scale=int(scale),
+        date_format="YYYY-MM-dd'T'HH:mm",
+        export_csv=False,
+    )
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out)

@@ -71,7 +71,8 @@ The full public API is also importable directly from `geets.*`.
 - `l_plot_timeseries`, `l_plot_boxplot`, `l_plot_combined`, `l_stack_plots`
 
 **Export** — `l_download_image`, `l_download_imagecollection` (local),
-`export_image_to_drive`, `export_imagecollection_to_drive`
+`export_image_to_drive`, `export_imagecollection_to_drive`; several images on one day
+(tiles, overpasses) get `<YYYYMMDD>T<HHMM>_<tile>` names instead of overwriting each other
 
 **Image pairs** — `find_pairs`, `export_pairs`, `ImagePair`
 
@@ -85,7 +86,8 @@ The full public API is also importable directly from `geets.*`.
 
 **File-based API** (AOI vector file in, GeoTIFF/CSV out; initializes EE from the .env)
 
-- `l_composite` — temporal composite (median/mean/min/max/sum/least_cloudy) of
+- `l_composite` — temporal composite (median/mean/min/max/sum, or least_cloudy: the
+  overpass with the largest cloud-free share of the AOI) of
   Sentinel-2, Landsat 8/9, MODIS NDVI/EVI/LST, ERA5 / ERA5-Land or CHIRPS
 - `l_image_series` — one GeoTIFF per date (optionally one mosaic per overpass: adjacent tiles of one
   satellite pass; two satellites on the same day stay separate files), skipping
@@ -93,7 +95,8 @@ The full public API is also importable directly from `geets.*`.
   `max_images` downloads
 - `l_dem` — DEM plus optional slope/aspect/hillshade (Copernicus, SRTM, ASTER,
   NASADEM, FABDEM)
-- `l_region_timeseries_csv` — per-image region statistics of one band as CSV
+- `l_region_timeseries_csv` — region statistics of one band per overpass as CSV
+  (tiles of one overpass mosaicked, so each row covers the whole AOI)
 - Masking is configurable per dataset (`MASK_OPTIONS`): Sentinel-2 QA60
   (+cirrus), s2cloudless with all thresholds, any SCL classes (`scl_classes`);
   Landsat QA_PIXEL flags

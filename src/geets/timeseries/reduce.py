@@ -185,6 +185,13 @@ def reduce_region_stats(
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date").sort_index()
+    if df.index.duplicated().any():
+        print(
+            "[geets.reduce] WARNING: several images share a date "
+            f"({df.index[df.index.duplicated()].unique().size} dates): each row covers "
+            "only its own scene (e.g. one Sentinel-2 tile). Mosaic per overpass first "
+            "(geets.files.mosaic_per_overpass) for one row per acquisition."
+        )
 
     if len(bands) == 1:
         if export_csv:

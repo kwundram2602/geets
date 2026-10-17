@@ -134,3 +134,53 @@ def test_l_image_series_refuses_too_many_images(tmp_path):
             files.l_image_series(
                 tmp_path / "a.gpkg", "2024-01-01", "2024-12-31", tmp_path / "out"
             )
+
+
+def test_l_region_timeseries_csv_reduces_one_mosaic_per_overpass(tmp_path):
+    import pandas as pd
+
+    col = MagicMock()
+    df = pd.DataFrame({"NIR_mean": [0.1]}, index=pd.Index(["2026-06-11"], name="date"))
+    with (
+        patch("geets.files.ensure_initialized"),
+        patch("geets.files.aoi_from_file", return_value="aoi"),
+        patch("geets.files.load_collection", return_value=col),
+        patch("geets.files.native_scale", return_value=10.0),
+        patch("geets.files.mosaic_per_overpass", return_value="mosaics") as mosaic,
+        patch("geets.files.reduce_region_stats", return_value=df) as reduce,
+    ):
+        files.l_region_timeseries_csv(
+            tmp_path / "a.gpkg",
+            "2026-06-01",
+            "2026-07-01",
+            tmp_path / "s.csv",
+            dataset="s2",
+            band="NIR",
+        )
+    mosaic.assert_called_once_with(col, ["SPACECRAFT_NAME", "SENSING_ORBIT_NUMBER"])
+    assert reduce.call_args.args[:3] == ("mosaics", "aoi", "NIR")
+    assert reduce.call_args.kwargs["date_format"] == "YYYY-MM-dd'T'HH:mm"
+    assert reduce.call_args.kwargs["scale"] == 10
+
+
+def test_composite_least_cloudy_needs_aoi():
+    col = MagicMock()
+    col.size.return_value.getInfo.return_value = 3
+    with pytest.raises(ValueError, match="AOI"):
+        files.composite(col, "least_cloudy", "s2")
+
+
+def test_composite_least_cloudy_picks_overpass_with_most_valid_aoi_share():
+    col = MagicMock()
+    col.size.return_value.getInfo.return_value = 3
+    ranked = MagicMock()
+    with (
+        patch("geets.files.mosaic_per_overpass") as mosaic,
+        patch("geets.files.with_valid_fraction", return_value=ranked) as valid,
+        patch("geets.files.ee.Image", side_effect=lambda x: x),
+    ):
+        result = files.composite(col, "least_cloudy", "l8l9", aoi="aoi")
+    mosaic.assert_called_once_with(col, ["SPACECRAFT_ID", "WRS_PATH"])
+    assert valid.call_args.args[1] == "aoi"
+    ranked.sort.assert_called_once_with("valid_fraction", False)
+    assert result is ranked.sort.return_value.first.return_value
