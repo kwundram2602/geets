@@ -15,6 +15,7 @@ import geopandas as gpd
 from .climate.chirps import CHIRPS_COLLECTIONS, load_chirps_daily
 from .climate.era5 import ERA5_COLLECTIONS, load_era5_daily
 from .config import ensure_initialized
+from .drive import l_export_and_pull
 from .modis import load_modis_lst, load_modis_vi
 from .optical.landsat import get_l8, get_l8l9, get_l9
 from .optical.sentinel2 import get_s2
@@ -244,6 +245,28 @@ def download_checked(
     return out
 
 
+def deliver(
+    image: ee.Image,
+    output_path: str | Path,
+    region: ee.Geometry,
+    scale: float,
+    crs: str = "EPSG:4326",
+    *,
+    via_drive: bool = False,
+    drive_folder: str = "geets",
+) -> Path:
+    """Write ``image`` to ``output_path``: direct download, or via a Drive export.
+
+    ``via_drive`` exports to Google Drive (no ~32 MB limit), waits for the task and
+    pulls the result to ``output_path`` (tiled exports merged into that one file).
+    """
+    if not via_drive:
+        return download_checked(image, output_path, region, scale, crs)
+    return l_export_and_pull(
+        image.toFloat(), output_path, region, scale, crs, folder=drive_folder
+    )
+
+
 def l_composite(
     aoi_path: str | Path,
     start_date: str,
@@ -256,6 +279,8 @@ def l_composite(
     scale: float | None = None,
     crs: str = "EPSG:4326",
     aoi_layer: str | None = None,
+    via_drive: bool = False,
+    drive_folder: str = "geets",
     **options,
 ) -> Path:
     """Temporal composite of a dataset over an AOI file, downloaded as GeoTIFF.
@@ -273,6 +298,9 @@ def l_composite(
         scale: Pixel size in metres; None uses the dataset's native resolution.
         crs: CRS of the GeoTIFF.
         aoi_layer: Layer inside ``aoi_path`` (GeoPackage with several layers).
+        via_drive: Export via Google Drive instead of downloading directly (for
+            results over ~32 MB); see ``deliver``.
+        drive_folder: Drive folder for ``via_drive``.
         **options: Masking and scene filters of the dataset (``MASK_OPTIONS``,
             documented in ``load_collection``), e.g. ``mask_clouds=False``,
             ``qa_bits=["cloud", "cloud_shadow"]``, ``cld_prb_thresh=40``.
@@ -290,7 +318,15 @@ def l_composite(
     scale = scale or native_scale(col)
     image = composite(col, reducer, dataset, aoi).clip(aoi)
     require_valid_pixels(image, aoi, scale, dataset)
-    return download_checked(image, output_path, aoi, scale, crs)
+    return deliver(
+        image,
+        output_path,
+        aoi,
+        scale,
+        crs,
+        via_drive=via_drive,
+        drive_folder=drive_folder,
+    )
 
 
 def l_dem(
@@ -302,19 +338,30 @@ def l_dem(
     scale: float = 30.0,
     crs: str = "EPSG:4326",
     aoi_layer: str | None = None,
+    via_drive: bool = False,
+    drive_folder: str = "geets",
 ) -> Path:
     """DEM (optionally with slope/aspect/hillshade bands) over an AOI file as GeoTIFF.
 
     Args:
         source: "copernicus" (GLO-30), "srtm", "aster", "nasadem" or "fabdem".
         products: Any of "elevation", "slope", "aspect", "hillshade"; default elevation.
+        via_drive, drive_folder: Export via Google Drive (see ``deliver``).
     """
     if source not in DEMS:
         raise ValueError(f"Unknown DEM source {source!r}. Choose from: {list(DEMS)}")
     ensure_initialized()
     aoi = aoi_from_file(aoi_path, aoi_layer)
     image = DEMS[source](aoi, products=products or ["elevation"])
-    return download_checked(image, output_path, aoi, scale, crs)
+    return deliver(
+        image,
+        output_path,
+        aoi,
+        scale,
+        crs,
+        via_drive=via_drive,
+        drive_folder=drive_folder,
+    )
 
 
 def l_region_timeseries_csv(

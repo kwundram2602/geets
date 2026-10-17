@@ -9,3 +9,5 @@ tests/
 notes/
 **/**/__pycache__/
 docs
+# local paths of the QGIS pendant
+qgis.md

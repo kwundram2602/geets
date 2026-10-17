@@ -17,6 +17,14 @@ from .config import (
     load_config,
     save_config,
 )
+from .drive import (
+    drive_status,
+    export_tasks,
+    l_download_drive_file,
+    l_export_and_pull,
+    l_pull_export,
+    wait_for_task,
+)
 from .files import l_composite, l_dem, l_image_series, l_region_timeseries_csv
 from .modis import (
     MODIS_SETS,
@@ -122,6 +130,12 @@ __all__ = [
     "l_download_imagecollection",
     "export_image_to_drive",
     "export_imagecollection_to_drive",
+    "export_tasks",
+    "wait_for_task",
+    "l_pull_export",
+    "l_export_and_pull",
+    "l_download_drive_file",
+    "drive_status",
     "DEM_COLLECTIONS",
     "DemProduct",
     "load_copernicus_dem",
