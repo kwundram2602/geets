@@ -94,7 +94,8 @@ The full public API is also importable directly from `geets.*`.
   NASADEM, FABDEM)
 - `l_region_timeseries_csv` — per-image region statistics of one band as CSV
 - Masking is configurable per dataset (`MASK_OPTIONS`): Sentinel-2 QA60
-  (+cirrus), s2cloudless with all thresholds, SCL water; Landsat QA_PIXEL flags
+  (+cirrus), s2cloudless with all thresholds, any SCL classes (`scl_classes`);
+  Landsat QA_PIXEL flags
   by name (`qa_bits`) and saturation; MODIS VI `max_qa`, LST QC mask. Options
   that do not apply to a dataset raise instead of being ignored.
 - Downloads are checked: a request over the ~32 MB limit raises instead of

@@ -51,6 +51,7 @@ MASK_OPTIONS = {
         "nir_drk_thresh",
         "cld_prj_dist",
         "buffer",
+        "scl_classes",
     ),
     "landsat": ("max_cloud_cover", "mask_clouds", "qa_bits", "mask_saturated"),
     "modis_vi": ("mask_clouds", "max_qa"),
@@ -112,7 +113,8 @@ def load_collection(
     per dataset family in ``MASK_OPTIONS``:
 
     - s2 (``get_s2``): max_cloud_cover, mask_clouds (QA60), mask_cirrus, mask_water
-      (SCL), use_s2cloudless, cld_prb_thresh, nir_drk_thresh, cld_prj_dist, buffer
+      (SCL), scl_classes, use_s2cloudless, cld_prb_thresh, nir_drk_thresh,
+      cld_prj_dist, buffer
     - Landsat (``get_l8``/``get_l9``/``get_l8l9``): max_cloud_cover, mask_clouds
       (default True here), qa_bits, mask_saturated
     - MODIS VI (``load_modis_vi``): mask_clouds, max_qa; MODIS LST: mask_clouds

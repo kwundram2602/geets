@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ee
+from collections.abc import Iterable
 
 from .common import _BANDS_HARMONIZED, _S2_BANDS_SRC, _S2_SCALE
 
@@ -9,6 +10,20 @@ _S2_COLLECTION_ID  = "COPERNICUS/S2_SR_HARMONIZED"
 _S2_CLOUD_PROPERTY = "CLOUDY_PIXEL_PERCENTAGE"
 
 _S2_SCL_WATER = 6  # SCL Scene Classification class for water bodies
+# Scene Classification Layer (SCL) classes of S2 L2A
+SCL_CLASSES = {
+    "saturated_defective": 1,
+    "dark": 2,
+    "cloud_shadow": 3,
+    "vegetation": 4,
+    "bare_soil": 5,
+    "water": 6,
+    "cloud_low": 7,  # cloud low probability / unclassified
+    "cloud_medium": 8,
+    "cloud_high": 9,
+    "cirrus": 10,
+    "snow": 11,
+}
 CLOUD_FILTER = 60
 CLD_PRB_THRESH = 50
 NIR_DRK_THRESH = 0.15
@@ -89,6 +104,35 @@ def _apply_cld_shdw_mask(img: ee.Image) -> ee.Image:
     return img.updateMask(img.select("cloudmask").Not())
 
 
+def resolve_scl_classes(classes: Iterable[int | str] | None) -> list[int]:
+    """SCL class values from names (see ``SCL_CLASSES``) or numbers 1-11."""
+    values = []
+    for cls in classes or []:
+        if isinstance(cls, str):
+            if cls not in SCL_CLASSES:
+                raise ValueError(
+                    f"Unknown SCL class {cls!r}. Choose from: {list(SCL_CLASSES)}"
+                )
+            cls = SCL_CLASSES[cls]
+        if int(cls) not in SCL_CLASSES.values():
+            raise ValueError(f"SCL class {cls} out of range 1-11")
+        values.append(int(cls))
+    return values
+
+
+def _mask_s2_scl(img: ee.Image, classes: list[int]) -> ee.Image:
+    """Mask pixels whose SCL class is in ``classes``.
+
+    Must be called on raw S2_SR_HARMONIZED images before band selection or
+    scaling — SCL is not preserved after _scale_s2.
+    """
+    scl = img.select("SCL")
+    keep = ee.Image.constant(1)
+    for cls in classes:
+        keep = keep.And(scl.neq(cls))
+    return img.updateMask(keep)
+
+
 def _mask_s2_water_scl(img: ee.Image) -> ee.Image:
     """Mask water pixels using the SCL Scene Classification Layer (class 6).
 
@@ -151,6 +195,7 @@ def get_s2(
     nir_drk_thresh: float = NIR_DRK_THRESH,
     cld_prj_dist: float = CLD_PRJ_DIST,
     buffer: float = BUFFER,
+    scl_classes: Iterable[int | str] | None = None,
 ) -> ee.ImageCollection:
     """Load a cloud-masked, scaled, band-harmonized Sentinel-2 SR collection.
 
@@ -169,7 +214,13 @@ def get_s2(
                            practice), so it removes nothing there; use
                            use_s2cloudless for those dates.
     mask_cirrus          : with mask_clouds, also mask QA60 cirrus (default True)
-    mask_water           : mask water pixels via SCL class 6 (default False)
+    mask_water           : mask water pixels via SCL class 6 (default False);
+                           shorthand for adding 6 to scl_classes
+    scl_classes          : SCL classes to mask, by number (1-11) or name from
+                           SCL_CLASSES: 1 saturated/defective, 2 dark, 3 cloud
+                           shadow, 4 vegetation, 5 bare soil, 6 water, 7 cloud low
+                           probability/unclassified, 8 cloud medium, 9 cloud high,
+                           10 cirrus, 11 snow/ice (default None = no SCL mask)
     use_s2cloudless      : join COPERNICUS/S2_CLOUD_PROBABILITY and apply
                            probabilistic cloud+shadow masking (default False).
                            Independent of mask_clouds; both can be combined.
@@ -233,8 +284,12 @@ def get_s2(
     if mask_clouds:
         col = col.map(lambda img: _mask_s2_qa60(img, mask_cirrus))
 
-    if mask_water:
-        col = col.map(_mask_s2_water_scl)
+    scl = resolve_scl_classes(scl_classes)
+    if mask_water and _S2_SCL_WATER not in scl:
+        scl.append(_S2_SCL_WATER)
+    if scl:
+        print(f"[geets.sentinel2] Masking SCL classes: {sorted(scl)}")
+        col = col.map(lambda img: _mask_s2_scl(img, scl))
 
     use_harmonized = bands is None or all(b in _BANDS_HARMONIZED for b in bands)
     col = col.map(_scale_s2)

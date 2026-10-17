@@ -89,3 +89,24 @@ def test_modis_options_are_forwarded():
 def test_options_not_applicable_to_dataset_are_rejected(dataset, option):
     with pytest.raises(ValueError, match=f"{option}.*not available"):
         files.load_collection(dataset, "2024-01-01", "2024-02-01", "AOI", **{option: 1})
+
+
+def test_resolve_scl_classes_by_name_and_number():
+    assert sentinel2.resolve_scl_classes(["cloud_shadow", 9, "cirrus"]) == [3, 9, 10]
+    assert sentinel2.resolve_scl_classes(None) == []
+
+
+def test_resolve_scl_classes_rejects_unknown():
+    with pytest.raises(ValueError, match="clouds"):
+        sentinel2.resolve_scl_classes(["clouds"])
+    with pytest.raises(ValueError, match="12"):
+        sentinel2.resolve_scl_classes([12])
+
+
+def test_get_s2_exposes_scl_classes():
+    assert "scl_classes" in inspect.signature(sentinel2.get_s2).parameters
+
+
+def test_s2_scl_classes_forwarded():
+    kwargs = _call("s2", "get_s2", scl_classes=[3, 8, 9])
+    assert kwargs["scl_classes"] == [3, 8, 9]
