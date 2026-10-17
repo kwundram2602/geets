@@ -216,21 +216,20 @@ def test_l_pull_export_rejects_unfinished_task(tmp_path):
             drive.l_pull_export("T1", tmp_path)
 
 
-def test_l_export_and_pull_uses_one_prefix_and_output_stem(tmp_path):
-    task = MagicMock(id="T9")
+def test_l_export_and_pull_many_uses_one_prefix_per_image(tmp_path):
     with (
-        patch("geets.drive.export_image_to_drive", return_value=task) as export,
-        patch("geets.drive.wait_for_task") as wait,
+        patch(
+            "geets.drive.export_image_to_drive", return_value=MagicMock(id="T9")
+        ) as export,
+        patch("geets.drive.task_status", return_value={"state": "COMPLETED"}),
         patch("geets.drive.l_pull_export", return_value="done") as pull,
     ):
-        result = drive.l_export_and_pull(
-            "img", tmp_path / "OUTPUT.tif", "aoi", 20.0, folder="exports"
+        drive.l_export_and_pull_many(
+            [("img", tmp_path / "OUTPUT.tif")], "aoi", 20.0, folder="exports"
         )
-    assert result == "done"
     args = export.call_args.args
     assert args[0] == "img" and args[2] == "exports"
     assert args[1] == args[3] and args[1].startswith("OUTPUT_")
-    wait.assert_called_once_with("T9", poll=30)
     pull.assert_called_once_with("T9", tmp_path, name="OUTPUT")
 
 
@@ -254,4 +253,89 @@ def test_deliver_via_drive(tmp_path):
         30,
         "EPSG:4326",
         folder="f",
+    )
+
+
+def _tasks(*ids):
+    return [MagicMock(id=i) for i in ids]
+
+
+def test_l_export_and_pull_many_starts_all_exports_before_waiting(tmp_path):
+    events = []
+
+    def export(image, *args, **kwargs):
+        events.append(("export", image))
+        return _tasks(f"T{image}")[0]
+
+    def status(task_id):
+        events.append(("status", task_id))
+        return {"state": "COMPLETED"}
+
+    with (
+        patch("geets.drive.export_image_to_drive", side_effect=export),
+        patch("geets.drive.task_status", side_effect=status),
+        patch("geets.drive.l_pull_export", side_effect=lambda t, d, name: d / name),
+        patch("geets.drive.time.sleep"),
+    ):
+        paths = drive.l_export_and_pull_many(
+            [("a", tmp_path / "s2_1.tif"), ("b", tmp_path / "s2_2.tif")],
+            "aoi",
+            10.0,
+        )
+    assert paths == [tmp_path / "s2_1", tmp_path / "s2_2"]
+    assert [e[0] for e in events] == ["export", "export", "status", "status"]
+
+
+def test_l_export_and_pull_many_polls_until_all_done(tmp_path):
+    states = {"Ta": iter(["RUNNING", "COMPLETED"]), "Tb": iter(["COMPLETED"])}
+    with (
+        patch(
+            "geets.drive.export_image_to_drive",
+            side_effect=lambda image, *a, **k: _tasks(f"T{image}")[0],
+        ),
+        patch(
+            "geets.drive.task_status",
+            side_effect=lambda t: {"state": next(states[t])},
+        ),
+        patch("geets.drive.l_pull_export", side_effect=lambda t, d, name: t) as pull,
+        patch("geets.drive.time.sleep") as sleep,
+    ):
+        result = drive.l_export_and_pull_many(
+            [("a", tmp_path / "a.tif"), ("b", tmp_path / "b.tif")], "aoi", 10.0
+        )
+    assert result == ["Ta", "Tb"]
+    assert [c.args[0] for c in pull.call_args_list] == ["Tb", "Ta"]
+    assert sleep.call_count == 1
+
+
+def test_l_export_and_pull_many_pulls_the_rest_when_one_fails(tmp_path):
+    with (
+        patch(
+            "geets.drive.export_image_to_drive",
+            side_effect=lambda image, *a, **k: _tasks(f"T{image}")[0],
+        ),
+        patch(
+            "geets.drive.task_status",
+            side_effect=lambda t: (
+                {"state": "FAILED", "error_message": "too big"}
+                if t == "Ta"
+                else {"state": "COMPLETED"}
+            ),
+        ),
+        patch("geets.drive.l_pull_export", side_effect=lambda t, d, name: t) as pull,
+        patch("geets.drive.time.sleep"),
+    ):
+        with pytest.raises(RuntimeError, match="1 of 2.*Ta.*too big"):
+            drive.l_export_and_pull_many(
+                [("a", tmp_path / "a.tif"), ("b", tmp_path / "b.tif")], "aoi", 10.0
+            )
+    pull.assert_called_once()
+    assert pull.call_args.args[0] == "Tb"
+
+
+def test_l_export_and_pull_is_the_single_image_case(tmp_path):
+    with patch("geets.drive.l_export_and_pull_many", return_value=["p"]) as many:
+        assert drive.l_export_and_pull("img", tmp_path / "x.tif", "aoi", 20.0) == "p"
+    many.assert_called_once_with(
+        [("img", tmp_path / "x.tif")], "aoi", 20.0, "EPSG:4326", folder="geets", poll=30
     )

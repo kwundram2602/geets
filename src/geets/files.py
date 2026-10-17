@@ -15,7 +15,7 @@ import geopandas as gpd
 from .climate.chirps import CHIRPS_COLLECTIONS, load_chirps_daily
 from .climate.era5 import ERA5_COLLECTIONS, load_era5_daily
 from .config import ensure_initialized
-from .drive import l_export_and_pull
+from .drive import l_export_and_pull, l_export_and_pull_many
 from .modis import load_modis_lst, load_modis_vi
 from .optical.landsat import get_l8, get_l8l9, get_l9
 from .optical.sentinel2 import get_s2
@@ -542,6 +542,8 @@ def l_image_series(
     max_images: int = 30,
     prefix: str | None = None,
     aoi_layer: str | None = None,
+    via_drive: bool = False,
+    drive_folder: str = "geets",
     **options,
 ) -> list[Path]:
     """Download every image of a dataset over an AOI file, one GeoTIFF per date.
@@ -557,6 +559,10 @@ def l_image_series(
             share of the AOI (0..1). Images without any valid pixel are always skipped.
         max_images: Refuse longer series instead of starting a huge download.
         prefix: File name prefix; default is the dataset name.
+        via_drive: Export every image via Google Drive instead of downloading it
+            directly (for images over ~32 MB). All tasks start at once; each file
+            is pulled as soon as its task is done (see ``l_export_and_pull_many``).
+        drive_folder: Drive folder for ``via_drive``.
 
     Returns:
         Paths of the written GeoTIFFs in date order.
@@ -603,6 +609,11 @@ def l_image_series(
     names = series_filenames(prefix or dataset.replace(":", "_").lower(), dates)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    if via_drive:
+        items = [
+            (ee.Image(images.get(i)).toFloat(), out / f"{names[i]}.tif") for i in keep
+        ]
+        return l_export_and_pull_many(items, aoi, scale, crs, folder=drive_folder)
     paths = []
     for count, i in enumerate(keep, 1):
         print(

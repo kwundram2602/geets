@@ -22,6 +22,7 @@ from .drive import (
     export_tasks,
     l_download_drive_file,
     l_export_and_pull,
+    l_export_and_pull_many,
     l_pull_export,
     wait_for_task,
 )
@@ -134,6 +135,7 @@ __all__ = [
     "wait_for_task",
     "l_pull_export",
     "l_export_and_pull",
+    "l_export_and_pull_many",
     "l_download_drive_file",
     "drive_status",
     "DEM_COLLECTIONS",

@@ -184,3 +184,46 @@ def test_composite_least_cloudy_picks_overpass_with_most_valid_aoi_share():
     assert valid.call_args.args[1] == "aoi"
     ranked.sort.assert_called_once_with("valid_fraction", False)
     assert result is ranked.sort.return_value.first.return_value
+
+
+def test_l_image_series_via_drive_exports_all_kept_images(tmp_path):
+    series = MagicMock()
+    series.size.return_value.getInfo.return_value = 3
+    agg = series.aggregate_array.return_value
+    agg.map.return_value.getInfo.return_value = [
+        "2026-06-09T00:37",
+        "2026-06-11T00:27",
+        "2026-06-11T00:37",
+    ]
+    agg.getInfo.return_value = [0.9, 0.0, 0.4]
+    imgs = [MagicMock(name=f"img{i}") for i in range(3)]
+    series.toList.return_value.get.side_effect = lambda i: imgs[i]
+    with (
+        patch("geets.files.ensure_initialized"),
+        patch("geets.files.aoi_from_file", return_value="aoi"),
+        patch("geets.files.load_collection"),
+        patch("geets.files.mosaic_per_overpass", return_value=series),
+        patch("geets.files.with_valid_fraction", return_value=series),
+        patch("geets.files.native_scale", return_value=10.0),
+        patch("geets.files.ee.Image", side_effect=lambda x: x),
+        patch("geets.files.download_checked") as download,
+        patch("geets.files.l_export_and_pull_many", return_value=["p0", "p2"]) as many,
+    ):
+        paths = files.l_image_series(
+            tmp_path / "a.gpkg",
+            "2026-06-01",
+            "2026-07-01",
+            tmp_path / "out",
+            via_drive=True,
+            drive_folder="f",
+        )
+    assert paths == ["p0", "p2"]
+    download.assert_not_called()
+    items = many.call_args.args[0]
+    # one dtype for all bands, as for direct downloads (Drive exports require it)
+    assert [i[0] for i in items] == [
+        imgs[0].toFloat.return_value,
+        imgs[2].toFloat.return_value,
+    ]
+    assert [i[1].name for i in items] == ["s2_20260609.tif", "s2_20260611T0037.tif"]
+    assert many.call_args.kwargs == {"folder": "f"}

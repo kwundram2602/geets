@@ -274,6 +274,72 @@ def l_pull_export(
     return out
 
 
+def l_export_and_pull_many(
+    items: Sequence[tuple[ee.Image, str | Path]],
+    region: ee.Geometry,
+    scale: float,
+    crs: str = "EPSG:4326",
+    *,
+    folder: str = "geets",
+    poll: float = 30,
+) -> list[Path]:
+    """Export several images to Drive at once, then pull each as soon as it is done.
+
+    ``items`` are ``(image, output_path)`` pairs. All export tasks are started first,
+    so Earth Engine works on them in parallel. A failed task does not stop the
+    others; after all are done a ``RuntimeError`` lists the failed ones. Drive files
+    are named ``<output stem>_<UTC timestamp>``, which keeps repeated exports (e.g.
+    QGIS temporary outputs, all called ``OUTPUT``) distinguishable there. If the
+    caller is interrupted while waiting, the tasks keep running on Earth Engine and
+    can be pulled later with ``l_pull_export`` (their ids are printed).
+    """
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    pending: dict[str, tuple[int, Path]] = {}
+    for i, (image, output_path) in enumerate(items):
+        out = Path(output_path)
+        prefix = f"{export_name(out.stem)[:80]}_{stamp}"
+        task = export_image_to_drive(
+            image, prefix, folder, prefix, region=region, scale=scale, crs=crs
+        )
+        if not task.id:
+            raise RuntimeError("Earth Engine did not return a task id for the export.")
+        pending[task.id] = (i, out)
+        print(
+            f"[geets.drive] export task {task.id} started for {out.name} "
+            f"(Drive folder '{folder}')",
+            flush=True,
+        )
+    print(
+        "[geets.drive] if interrupted, pull finished tasks later with l_pull_export.",
+        flush=True,
+    )
+    results: list[Path | None] = [None] * len(items)
+    failed: list[str] = []
+    while True:
+        for task_id in list(pending):
+            task = task_status(task_id)
+            state = task.get("state")
+            if state == "COMPLETED":
+                i, out = pending.pop(task_id)
+                results[i] = l_pull_export(task_id, out.parent, name=out.stem)
+                done = len(items) - len(pending)
+                print(f"[geets.drive] {done}/{len(items)} done: {out.name}", flush=True)
+            elif state in ("FAILED", "CANCELLED", "UNKNOWN"):
+                _, out = pending.pop(task_id)
+                failed.append(
+                    f"{out.name} (task {task_id} {state}: "
+                    f"{task.get('error_message', '')})"
+                )
+        if not pending:
+            break
+        time.sleep(poll)
+    if failed:
+        raise RuntimeError(
+            f"{len(failed)} of {len(items)} Drive exports failed: " + "; ".join(failed)
+        )
+    return [p for p in results if p is not None]
+
+
 def l_export_and_pull(
     image: ee.Image,
     output_path: str | Path,
@@ -284,25 +350,10 @@ def l_export_and_pull(
     folder: str = "geets",
     poll: float = 30,
 ) -> Path:
-    """Export ``image`` to Drive, wait for the task and download it to ``output_path``.
+    """Export one image to Drive, wait for it and download it to ``output_path``.
 
-    The Drive file is named ``<output stem>_<UTC timestamp>`` so repeated exports
-    (e.g. QGIS temporary outputs, all called ``OUTPUT``) stay distinguishable there.
-    If the caller is interrupted while waiting, the task keeps running on Earth Engine
-    and can be pulled later with ``l_pull_export`` (its id is printed).
+    See ``l_export_and_pull_many`` for naming and interruption.
     """
-    out = Path(output_path)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    prefix = f"{export_name(out.stem)[:80]}_{stamp}"
-    task = export_image_to_drive(
-        image, prefix, folder, prefix, region=region, scale=scale, crs=crs
-    )
-    if not task.id:
-        raise RuntimeError("Earth Engine did not return a task id for the export.")
-    print(
-        f"[geets.drive] export task {task.id} started (Drive folder '{folder}'); "
-        "if interrupted, pull it later with l_pull_export.",
-        flush=True,
-    )
-    wait_for_task(task.id, poll=poll)
-    return l_pull_export(task.id, out.parent, name=out.stem)
+    return l_export_and_pull_many(
+        [(image, output_path)], region, scale, crs, folder=folder, poll=poll
+    )[0]

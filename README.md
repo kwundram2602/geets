@@ -79,7 +79,8 @@ The full public API is also importable directly from `geets.*`.
 - `export_tasks` lists recent EE tasks (state, Drive destination); `wait_for_task` polls one
 - `l_pull_export(task_id, output_dir)` downloads a finished Drive image export in chunks;
   tiled exports (`prefix-<row>-<col>.tif`) are merged block by block into one GeoTIFF
-- `l_export_and_pull` exports an image to Drive, waits and pulls it — no ~32 MB limit
+- `l_export_and_pull` / `l_export_and_pull_many` export one or several images to
+  Drive (all tasks at once), wait and pull each when done — no ~32 MB limit
 - `drive_status` checks Drive access
 
 **Image pairs** — `find_pairs`, `export_pairs`, `ImagePair`
@@ -111,8 +112,9 @@ The full public API is also importable directly from `geets.*`.
   by name (`qa_bits`) and saturation; MODIS VI `max_qa`, LST QC mask. Options
   that do not apply to a dataset raise instead of being ignored.
 - Downloads are checked: a request over the ~32 MB limit raises instead of
-  returning a missing file. `l_composite` and `l_dem` take `via_drive=True` to export
-  via Google Drive instead and pull the result to the same output path.
+  returning a missing file. `l_composite`, `l_image_series` and `l_dem` take
+  `via_drive=True` to export via Google Drive instead and pull the results to the
+  same output paths.
 
 Radar (Sentinel-1 GRD) is currently not included.
 
