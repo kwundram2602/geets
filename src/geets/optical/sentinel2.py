@@ -163,9 +163,10 @@ def get_s2(
                            any other name keeps the original sensor band name.
                            None keeps all six harmonized bands.
     max_cloud_cover      : maximum CLOUDY_PIXEL_PERCENTAGE (default 20)
-    mask_clouds          : apply QA60 opaque-cloud mask (default True). QA60 is
-                           empty (all 0) for scenes from 2022 to early 2024, e.g.
-                           all of 2023, so it masks nothing there; use
+    mask_clouds          : apply QA60 opaque-cloud mask (default True). QA60 has
+                           no cloud information from 2022-01-25 to 2024-02-28
+                           (inclusive; masked per the GEE catalog, all 0 in
+                           practice), so it removes nothing there; use
                            use_s2cloudless for those dates.
     mask_cirrus          : with mask_clouds, also mask QA60 cirrus (default True)
     mask_water           : mask water pixels via SCL class 6 (default False)
