@@ -15,6 +15,7 @@ dependencies = [
     "geopandas>=1.1.2",
     "matplotlib>=3.10.8",
     "pandas>=2.3.3",
+    "rasterio>=1.5.2",
 ]
 
 [build-system]

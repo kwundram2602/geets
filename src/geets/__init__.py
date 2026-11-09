@@ -9,6 +9,24 @@ from .climate.chirps import (
     load_chirps_daily,
 )
 from .climate.era5 import ERA5_COLLECTIONS, load_era5_daily
+from .config import (
+    authenticate_from_config,
+    config_path,
+    ee_status,
+    init_from_config,
+    load_config,
+    save_config,
+)
+from .drive import (
+    drive_status,
+    export_tasks,
+    l_download_drive_file,
+    l_export_and_pull,
+    l_export_and_pull_many,
+    l_pull_export,
+    wait_for_task,
+)
+from .files import l_composite, l_dem, l_image_series, l_region_timeseries_csv
 from .modis import (
     MODIS_SETS,
     load_modis_fire,
@@ -62,6 +80,16 @@ from .utils.image_utils import get_image_with_least_cc
 from .utils.output import l_get_outdir, l_set_outdir
 
 __all__ = [
+    "config_path",
+    "load_config",
+    "save_config",
+    "init_from_config",
+    "authenticate_from_config",
+    "ee_status",
+    "l_composite",
+    "l_dem",
+    "l_image_series",
+    "l_region_timeseries_csv",
     "find_pairs",
     "export_pairs",
     "ImagePair",
@@ -103,6 +131,13 @@ __all__ = [
     "l_download_imagecollection",
     "export_image_to_drive",
     "export_imagecollection_to_drive",
+    "export_tasks",
+    "wait_for_task",
+    "l_pull_export",
+    "l_export_and_pull",
+    "l_export_and_pull_many",
+    "l_download_drive_file",
+    "drive_status",
     "DEM_COLLECTIONS",
     "DemProduct",
     "load_copernicus_dem",

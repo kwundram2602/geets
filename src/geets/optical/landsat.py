@@ -28,15 +28,38 @@ _QA_PIXEL_BITS = {
     "clear":         6,
     "water":         7,
 }
-# Default mask: dilated cloud, cirrus, cloud, shadow, snow.
+# Default mask: dilated cloud, cirrus, cloud, cloud shadow.
 _DEFAULT_QA_BITS = (1, 2, 3, 4)
+# QA_PIXEL flags that make sense to mask (fill and clear are not mask flags)
+QA_MASK_FLAGS = ("dilated_cloud", "cirrus", "cloud", "cloud_shadow", "snow", "water")
+
+
+def resolve_qa_bits(qa_bits: Iterable[int | str] | None) -> list[int]:
+    """QA_PIXEL bit numbers from names (see ``_QA_PIXEL_BITS``) or numbers.
+
+    None gives the default (dilated cloud, cirrus, cloud, cloud shadow).
+    """
+    if qa_bits is None:
+        return list(_DEFAULT_QA_BITS)
+    bits = []
+    for bit in qa_bits:
+        if isinstance(bit, str):
+            if bit not in _QA_PIXEL_BITS:
+                raise ValueError(
+                    f"Unknown QA_PIXEL flag {bit!r}. "
+                    f"Choose from: {list(_QA_PIXEL_BITS)}"
+                )
+            bit = _QA_PIXEL_BITS[bit]
+        bits.append(int(bit))
+    return bits
 
 
 def _mask_lc_qa_pixel(
     img: ee.Image,
     qa_bits: Iterable[int] = _DEFAULT_QA_BITS,
+    mask_saturated: bool = True,
 ) -> ee.Image:
-    """Mask pixels flagged in the selected QA_PIXEL bits, plus saturated pixels.
+    """Mask pixels flagged in the selected QA_PIXEL bits, and saturated pixels.
 
     Parameters
     ----------
@@ -45,14 +68,17 @@ def _mask_lc_qa_pixel(
               listed bit is set. Default (1, 2, 3, 4, 5) -> dilated cloud,
               cirrus, cloud, cloud shadow, snow. See _QA_PIXEL_BITS for the
               full bit layout. An empty iterable applies no QA_PIXEL masking.
+    mask_saturated : also drop pixels saturated in any band (QA_RADSAT != 0)
     """
     qa = img.select("QA_PIXEL")
     mask = ee.Image.constant(1)
     print(f"[geets.landsat] Masking QA_PIXEL bits: {list(qa_bits)}")
     for bit in qa_bits:
         mask = mask.And(qa.bitwiseAnd(1 << bit).eq(0))
-    sat = img.select("QA_RADSAT").eq(0)
-    return img.updateMask(mask).updateMask(sat)
+    img = img.updateMask(mask)
+    if mask_saturated:
+        img = img.updateMask(img.select("QA_RADSAT").eq(0))
+    return img
 
 
 def _scale_lc_sr(img: ee.Image) -> ee.Image:
@@ -189,6 +215,8 @@ def _load_lc_collection(
     mask_clouds: bool,
     clip: bool,
     sensor_label: str,
+    qa_bits: Iterable[int | str] | None = None,
+    mask_saturated: bool = True,
 ) -> ee.ImageCollection:
     """Shared loader for any LC08/LC09 C2L2 collection.
 
@@ -203,6 +231,9 @@ def _load_lc_collection(
     mask_clouds          : apply QA_PIXEL cloud/shadow mask
     clip                 : clip each image to AOI when aoi is provided
     sensor_label         : label for logging (e.g., "L8" or "L9")
+    qa_bits              : QA_PIXEL flags to mask (names or bit numbers); None
+                           = dilated_cloud, cirrus, cloud, cloud_shadow
+    mask_saturated       : with mask_clouds, also drop saturated pixels
 
     Returns
     -------
@@ -225,7 +256,8 @@ def _load_lc_collection(
         col = col.filterBounds(aoi)
 
     if mask_clouds:
-        col = col.map(_mask_lc_qa_pixel)
+        bits = resolve_qa_bits(qa_bits)
+        col = col.map(lambda img: _mask_lc_qa_pixel(img, bits, mask_saturated))
 
     requested_harmonized: list[str] = []
     requested_native_sr: list[str] = []
@@ -268,6 +300,8 @@ def get_l8(
     max_cloud_cover: float = 20.0,
     mask_clouds: bool = False,
     clip: bool = False,
+    qa_bits: Iterable[int | str] | None = None,
+    mask_saturated: bool = True,
 ) -> ee.ImageCollection:
     """Load a Landsat-8 C2L2 SR collection with optional scaling/harmonization.
 
@@ -285,6 +319,10 @@ def get_l8(
     max_cloud_cover      : maximum CLOUD_COVER (default 20)
     mask_clouds          : apply QA_PIXEL cloud/shadow mask (default False)
     clip                 : clip each image to AOI when aoi is provided (default False)
+    qa_bits              : QA_PIXEL flags to mask with mask_clouds, by name
+                           (dilated_cloud, cirrus, cloud, cloud_shadow, snow, water)
+                           or bit number; None = the first four
+    mask_saturated       : with mask_clouds, also drop saturated pixels (default True)
 
     Returns
     -------
@@ -302,6 +340,8 @@ def get_l8(
         mask_clouds=mask_clouds,
         clip=clip,
         sensor_label="L8",
+        qa_bits=qa_bits,
+        mask_saturated=mask_saturated,
     )
 
 
@@ -315,6 +355,8 @@ def get_l9(
     max_cloud_cover: float = 20.0,
     mask_clouds: bool = False,
     clip: bool = False,
+    qa_bits: Iterable[int | str] | None = None,
+    mask_saturated: bool = True,
 ) -> ee.ImageCollection:
     """Load a Landsat-9 C2L2 SR collection with optional scaling/harmonization.
 
@@ -335,6 +377,10 @@ def get_l9(
     max_cloud_cover      : maximum CLOUD_COVER (default 20)
     mask_clouds          : apply QA_PIXEL cloud/shadow mask (default False)
     clip                 : clip each image to AOI when aoi is provided (default False)
+    qa_bits              : QA_PIXEL flags to mask with mask_clouds, by name
+                           (dilated_cloud, cirrus, cloud, cloud_shadow, snow, water)
+                           or bit number; None = the first four
+    mask_saturated       : with mask_clouds, also drop saturated pixels (default True)
 
     Returns
     -------
@@ -352,6 +398,8 @@ def get_l9(
         mask_clouds=mask_clouds,
         clip=clip,
         sensor_label="L9",
+        qa_bits=qa_bits,
+        mask_saturated=mask_saturated,
     )
 
 
@@ -365,6 +413,8 @@ def get_l8l9(
     max_cloud_cover: float = 20.0,
     mask_clouds: bool = False,
     clip: bool = False,
+    qa_bits: Iterable[int | str] | None = None,
+    mask_saturated: bool = True,
 ) -> ee.ImageCollection:
     """Load a merged Landsat-8 + Landsat-9 C2L2 SR collection.
 
@@ -388,6 +438,7 @@ def get_l8l9(
     max_cloud_cover      : maximum CLOUD_COVER (default 20)
     mask_clouds          : apply QA_PIXEL cloud/shadow mask (default False)
     clip                 : clip each image to AOI when aoi is provided
+    qa_bits, mask_saturated : see get_l8
 
     Returns
     -------
@@ -400,6 +451,8 @@ def get_l8l9(
         max_cloud_cover=max_cloud_cover,
         mask_clouds=mask_clouds,
         clip=clip,
+        qa_bits=qa_bits,
+        mask_saturated=mask_saturated,
     )
     col_l8 = _load_lc_collection(
         _L8_COLLECTION_ID, start_date, end_date, aoi, sensor_label="L8", **shared

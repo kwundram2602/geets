@@ -35,16 +35,15 @@ def test_l_download_image_appends_tif_extension(tmp_path):
 def test_l_download_imagecollection_names_files_by_date(tmp_path):
     from geets.utils.exports import l_download_imagecollection
 
-    mock_img1 = MagicMock()
-    mock_img1.date.return_value.format.return_value.getInfo.return_value = "20220601"
-    mock_img2 = MagicMock()
-    mock_img2.date.return_value.format.return_value.getInfo.return_value = "20220615"
+    mock_img1, mock_img2 = MagicMock(), MagicMock()
+    metas = [_meta("2022-06-01T10:00"), _meta("2022-06-15T10:00")]
 
     mock_col = MagicMock()
     mock_col.size.return_value.getInfo.return_value = 2
     mock_col.toList.return_value.get.side_effect = [mock_img1, mock_img2]
 
-    with patch("geets.utils.exports.geemap.ee_export_image"), \
+    with patch("geets.utils.exports._image_meta", return_value=metas), \
+         patch("geets.utils.exports.geemap.ee_export_image"), \
          patch("geets.utils.exports.ee.Image", side_effect=lambda x: x):
         paths = l_download_imagecollection(mock_col, tmp_path, "sentinel2")
 
@@ -95,10 +94,8 @@ def test_export_image_to_drive_starts_task_and_returns_it():
 def test_export_imagecollection_to_drive_starts_one_task_per_image():
     from geets.utils.exports import export_imagecollection_to_drive
 
-    mock_img1 = MagicMock()
-    mock_img1.date.return_value.format.return_value.getInfo.return_value = "20220601"
-    mock_img2 = MagicMock()
-    mock_img2.date.return_value.format.return_value.getInfo.return_value = "20220615"
+    mock_img1, mock_img2 = MagicMock(), MagicMock()
+    metas = [_meta("2022-06-01T10:00"), _meta("2022-06-15T10:00")]
 
     mock_col = MagicMock()
     mock_col.size.return_value.getInfo.return_value = 2
@@ -106,7 +103,8 @@ def test_export_imagecollection_to_drive_starts_one_task_per_image():
 
     mock_task1, mock_task2 = MagicMock(), MagicMock()
 
-    with patch("geets.utils.exports.ee.batch.Export.image.toDrive", side_effect=[mock_task1, mock_task2]), \
+    with patch("geets.utils.exports._image_meta", return_value=metas), \
+         patch("geets.utils.exports.ee.batch.Export.image.toDrive", side_effect=[mock_task1, mock_task2]), \
          patch("geets.utils.exports.ee.Image", side_effect=lambda x: x):
         tasks = export_imagecollection_to_drive(mock_col, "desc", "Folder", "pfx")
 
@@ -119,7 +117,6 @@ def test_export_imagecollection_to_drive_suffixes_description_and_prefix():
     from geets.utils.exports import export_imagecollection_to_drive
 
     mock_img = MagicMock()
-    mock_img.date.return_value.format.return_value.getInfo.return_value = "20230101"
 
     mock_col = MagicMock()
     mock_col.size.return_value.getInfo.return_value = 1
@@ -127,7 +124,8 @@ def test_export_imagecollection_to_drive_suffixes_description_and_prefix():
 
     mock_task = MagicMock()
 
-    with patch("geets.utils.exports.ee.batch.Export.image.toDrive", return_value=mock_task) as mock_drive, \
+    with patch("geets.utils.exports._image_meta", return_value=[_meta("2023-01-01T10:00")]), \
+         patch("geets.utils.exports.ee.batch.Export.image.toDrive", return_value=mock_task) as mock_drive, \
          patch("geets.utils.exports.ee.Image", side_effect=lambda x: x):
         export_imagecollection_to_drive(mock_col, "my_desc", "Folder", "my_pfx")
 
@@ -142,3 +140,68 @@ def test_export_imagecollection_to_drive_suffixes_description_and_prefix():
         maxPixels=int(1e13),
         skipEmptyTiles=False,
     )
+
+
+def _meta(iso, tile="", index="i"):
+    from datetime import datetime, timezone
+
+    t = datetime.fromisoformat(iso).replace(tzinfo=timezone.utc).timestamp() * 1000
+    return {"t": t, "tile": tile, "index": index}
+
+
+def test_export_suffixes_plain_date_when_unique():
+    from geets.utils.exports import export_suffixes
+
+    metas = [_meta("2022-06-01T10:00"), _meta("2022-06-15T10:00")]
+    assert export_suffixes(metas) == ["20220601", "20220615"]
+
+
+def test_export_suffixes_time_and_tile_for_same_day_images():
+    # 2026-06-11: two tiles each of Sentinel-2B (00:27) and Sentinel-2A (00:37)
+    from geets.utils.exports import export_suffixes
+
+    metas = [
+        _meta("2026-06-11T00:27", "55MFS"),
+        _meta("2026-06-11T00:27", "55MGS"),
+        _meta("2026-06-11T00:37", "55MGS"),
+        _meta("2026-06-11T00:38", "55MFS"),
+        _meta("2026-06-14T00:30", "55MGS"),
+    ]
+    assert export_suffixes(metas) == [
+        "20260611T0027_55MFS",
+        "20260611T0027_55MGS",
+        "20260611T0037_55MGS",
+        "20260611T0038_55MFS",
+        "20260614",
+    ]
+
+
+def test_export_suffixes_fall_back_to_index_and_counter():
+    from geets.utils.exports import export_suffixes
+
+    metas = [
+        _meta("2026-06-11T00:27", index="a"),
+        _meta("2026-06-11T00:27", index="a"),
+        _meta("2026-06-11T00:37", index="b"),
+    ]
+    assert export_suffixes(metas) == [
+        "20260611T0027_a",
+        "20260611T0027_a_2",
+        "20260611T0037_b",
+    ]
+
+
+def test_l_download_imagecollection_keeps_same_day_tiles_apart(tmp_path):
+    from geets.utils.exports import l_download_imagecollection
+
+    metas = [_meta("2026-06-11T00:27", "55MFS"), _meta("2026-06-11T00:27", "55MGS")]
+    col = MagicMock()
+    col.size.return_value.getInfo.return_value = 2
+    with patch("geets.utils.exports._image_meta", return_value=metas), \
+         patch("geets.utils.exports.geemap.ee_export_image"), \
+         patch("geets.utils.exports.ee.Image", side_effect=lambda x: x):
+        paths = l_download_imagecollection(col, tmp_path, "s2")
+    assert paths == [
+        tmp_path / "s2_20260611T0027_55MFS.tif",
+        tmp_path / "s2_20260611T0027_55MGS.tif",
+    ]

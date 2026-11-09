@@ -71,9 +71,50 @@ The full public API is also importable directly from `geets.*`.
 - `l_plot_timeseries`, `l_plot_boxplot`, `l_plot_combined`, `l_stack_plots`
 
 **Export** — `l_download_image`, `l_download_imagecollection` (local),
-`export_image_to_drive`, `export_imagecollection_to_drive`
+`export_image_to_drive`, `export_imagecollection_to_drive`; several images on one day
+(tiles, overpasses) get `<YYYYMMDD>T<HHMM>_<tile>` names instead of overwriting each other
+
+**Google Drive pull** (`geets.drive`, Drive API with the Earth Engine login, no mount)
+
+- `export_tasks` lists recent EE tasks (state, Drive destination); `wait_for_task` polls one
+- `l_pull_export(task_id, output_dir)` downloads a finished Drive image export in chunks;
+  tiled exports (`prefix-<row>-<col>.tif`) are merged block by block into one GeoTIFF
+- `l_export_and_pull` / `l_export_and_pull_many` export one or several images to
+  Drive (all tasks at once), wait and pull each when done — no ~32 MB limit
+- `drive_status` checks Drive access
 
 **Image pairs** — `find_pairs`, `export_pairs`, `ImagePair`
+
+**Configuration & authentication** — `config_path`, `load_config`, `save_config`,
+`init_from_config`, `authenticate_from_config`, `ee_status`
+
+- Per-device settings in `~/.config/geets/.env` (override: `GEETS_ENV_FILE`), e.g.
+  `EE_PROJECT=<cloud project id>`; written with mode 600, outside every repo.
+- `authenticate_from_config()` runs the browser login (localhost redirect) and checks
+  the connection; `ee_status()` reports config, stored token and a live round trip.
+
+**File-based API** (AOI vector file in, GeoTIFF/CSV out; initializes EE from the .env)
+
+- `l_composite` — temporal composite (median/mean/min/max/sum, or least_cloudy: the
+  overpass with the largest cloud-free share of the AOI) of
+  Sentinel-2, Landsat 8/9, MODIS NDVI/EVI/LST, ERA5 / ERA5-Land or CHIRPS
+- `l_image_series` — one GeoTIFF per date (optionally one mosaic per overpass: adjacent tiles of one
+  satellite pass; two satellites on the same day stay separate files), skipping
+  images whose valid pixels cover too little of the AOI; refuses more than
+  `max_images` downloads
+- `l_dem` — DEM plus optional slope/aspect/hillshade (Copernicus, SRTM, ASTER,
+  NASADEM, FABDEM)
+- `l_region_timeseries_csv` — region statistics of one band per overpass as CSV
+  (tiles of one overpass mosaicked, so each row covers the whole AOI)
+- Masking is configurable per dataset (`MASK_OPTIONS`): Sentinel-2 QA60
+  (+cirrus), s2cloudless with all thresholds, any SCL classes (`scl_classes`);
+  Landsat QA_PIXEL flags
+  by name (`qa_bits`) and saturation; MODIS VI `max_qa`, LST QC mask. Options
+  that do not apply to a dataset raise instead of being ignored.
+- Downloads are checked: a request over the ~32 MB limit raises instead of
+  returning a missing file. `l_composite`, `l_image_series` and `l_dem` take
+  `via_drive=True` to export via Google Drive instead and pull the results to the
+  same output paths.
 
 Radar (Sentinel-1 GRD) is currently not included.
 
