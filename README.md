@@ -1,14 +1,15 @@
 # geets
 
 > [!WARNING]
-> **Experimental.** The API may change without notice and there's no stability guarantee between versions.
+> **Experimental package.** 
 
 Google Earth Engine Tools for Earth Science.
 
 A thin Python layer over `earthengine-api` that wraps the recurring steps:
-- load collections,
+- loading collections,
 - masking (SCL, QA pixels),
 - scaling and harmonizing
+- L8,L9 to LST
 ## Installation
 
 ```bash
