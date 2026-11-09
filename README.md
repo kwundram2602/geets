@@ -1,18 +1,18 @@
 # geets
 
+> [!WARNING]
+> **Experimental.** The API may change without notice and there's no stability guarantee between versions.
+
 Google Earth Engine Tools for Earth Science.
 
 A thin Python layer over `earthengine-api` that wraps the recurring steps:
-load collections, mask, scale and harmonize band names; aggregate over time;
-reduce over regions; export as CSV, plot or GeoTIFF.
-
-Every loader returns an `ee.ImageCollection` or `ee.Image` — evaluation stays
-lazy and server-side.
-
+- load collections,
+- masking (SCL, QA pixels),
+- scaling and harmonizing
 ## Installation
 
 ```bash
-uv add geets          # or: uv pip install -e .
+uv add git+https://github.com/kwundram2602/geets 
 ```
 
 Requires Python ≥ 3.13 and an Earth Engine project.

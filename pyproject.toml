@@ -6,7 +6,10 @@ readme = "README.md"
 authors = [
     { name = "kwundram2602", email = "134778951+kwundram2602@users.noreply.github.com" }
 ]
-private = true
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Private :: Do Not Upload",
+]
 requires-python = ">=3.13"
 dependencies = [
     "earthengine-api>=1.7.14",
